@@ -1,12 +1,12 @@
 package com.meydan.meydan.security;
 
+import com.meydan.meydan.models.entities.User;
+import com.meydan.meydan.repository.UserRepository;
 import com.meydan.meydan.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import com.meydan.meydan.models.entities.User;
-import com.meydan.meydan.repository.UserRepository;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,15 +46,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             User user = userRepository.findByMail(mail).orElse(null);
 
             if (user != null && jwtService.isTokenValid(token, user.getMail())) {
+                // KRİTİK DÜZELTME:
+                // İlk parametreye 'user' nesnesi yerine 'user.getMail()' (yani String) veriyoruz.
+                // Böylece principal.getName() dediğinde direkt mail adresi dönecek.
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
-                                user.getId().toString(), // Principal olarak sadece ID'yi String olarak ver
+                                user.getMail(),
                                 null,
                                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getTag()))
                         );
-                
-                // İhtiyaç halinde User nesnesini detaylara koyabiliriz
-                authToken.setDetails(user);
 
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
