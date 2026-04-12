@@ -3,9 +3,10 @@ package com.meydan.meydan.controller;
 import com.meydan.meydan.dto.ApiResponse;
 import com.meydan.meydan.dto.CategoryResponseDTO;
 import com.meydan.meydan.models.entities.Category;
-import com.meydan.meydan.request.Auth.Category.AddCategoryRequestBody;
-import com.meydan.meydan.request.Auth.Category.DeleteCategoryRequestBody;
-import com.meydan.meydan.request.Auth.Category.UpdateCategoryRequestBody;
+import com.meydan.meydan.models.enums.CategoryType;
+import com.meydan.meydan.request.Category.AddCategoryRequestBody;
+import com.meydan.meydan.request.Category.DeleteCategoryRequestBody;
+import com.meydan.meydan.request.Category.UpdateCategoryRequestBody;
 import com.meydan.meydan.service.CategoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,17 +31,19 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping("/list")
-    @Operation(summary = "Ana kategorileri listele", description = "Aktif ana kategorileri getirir (parent null olanlar)")
-    public ResponseEntity<ApiResponse<List<Category>>> getAllCategories() {
-        List<Category> categories = categoryService.getAllCategories();
+    @Operation(summary = "Ana kategorileri listele", description = "Aktif ana kategorileri getirir. İsteğe bağlı olarak 'type' (Örn: GAME) parametresi alabilir.")
+    public ResponseEntity<ApiResponse<List<Category>>> getAllCategories(
+            @RequestParam(required = false) CategoryType type) {
+        List<Category> categories = categoryService.getAllCategories(type);
         return ResponseEntity.ok(new ApiResponse<>(true, "Ana kategoriler başarıyla getirildi", categories));
     }
 
     @GetMapping("/list/paginated")
-    @Operation(summary = "Ana kategorileri sayfalı olarak listele", description = "Aktif ana kategorileri sayfalı şekilde getirir")
+    @Operation(summary = "Ana kategorileri sayfalı olarak listele", description = "Aktif ana kategorileri sayfalı şekilde getirir. İsteğe bağlı olarak 'type' parametresi alabilir.")
     public ResponseEntity<ApiResponse<Page<Category>>> getAllCategoriesWithPagination(
+            @RequestParam(required = false) CategoryType type,
             @PageableDefault(size = 10, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
-        Page<Category> categories = categoryService.getAllCategoriesWithPagination(pageable);
+        Page<Category> categories = categoryService.getAllCategoriesWithPagination(type, pageable);
         return ResponseEntity.ok(new ApiResponse<>(true, "Ana kategoriler başarıyla getirildi", categories));
     }
 

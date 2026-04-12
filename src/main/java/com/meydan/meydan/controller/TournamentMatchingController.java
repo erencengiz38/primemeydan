@@ -1,0 +1,53 @@
+package com.meydan.meydan.controller;
+
+import com.meydan.meydan.dto.ApiResponse;
+import com.meydan.meydan.models.entities.TournamentGroup;
+import com.meydan.meydan.models.entities.TournamentStage;
+import com.meydan.meydan.request.Turnuva.CreateGroupRequest;
+import com.meydan.meydan.request.Turnuva.CreateStageRequest;
+import com.meydan.meydan.service.TournamentMatchingService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/tournament-matchings")
+@Tag(name = "Tournament Matching", description = "Turnuva Eşleştirme ve Aşama/Grup API endpoint'leri")
+@RequiredArgsConstructor
+public class TournamentMatchingController {
+
+    private final TournamentMatchingService matchingService;
+
+    @PostMapping("/{turnuvaId}/stages")
+    @Operation(summary = "Turnuvaya Aşama Ekle (Organizasyon Yetkilisi)", description = "Turnuvaya 'Ön Eleme', 'Grup Aşaması' gibi aşamalar ekler. Sadece turnuvayı düzenleyen organizasyonun yetkilileri yapabilir.")
+    public ResponseEntity<ApiResponse<TournamentStage>> createStage(
+            @PathVariable Long turnuvaId,
+            @Valid @RequestBody CreateStageRequest request) {
+
+        TournamentStage stage = matchingService.createStage(turnuvaId, request);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Aşama başarıyla oluşturuldu.", stage));
+    }
+
+    @PostMapping("/stages/{stageId}/groups")
+    @Operation(summary = "Aşamaya Grup Ekle (Organizasyon Yetkilisi)", description = "Aşamanın altına 'A Grubu', 'B Grubu' gibi gruplar ekler. Sadece turnuvayı düzenleyen organizasyonun yetkilileri yapabilir.")
+    public ResponseEntity<ApiResponse<TournamentGroup>> createGroup(
+            @PathVariable Long stageId,
+            @Valid @RequestBody CreateGroupRequest request) {
+
+        TournamentGroup group = matchingService.createGroup(stageId, request);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Grup başarıyla oluşturuldu.", group));
+    }
+
+    @PostMapping("/{turnuvaId}/stages/{stageId}/distribute")
+    @Operation(summary = "Başvuruları Gruplara Dağıt (AYRIŞTIR BUTONU) (Organizasyon Yetkilisi)", description = "Turnuvada 'Kabul Edilmiş' olan tüm başvuruları (takım/bireysel), belirtilen aşamanın altındaki gruplara rastgele dağıtır. Sadece turnuvayı düzenleyen organizasyonun yetkilileri yapabilir.")
+    public ResponseEntity<ApiResponse<Void>> distributeApplications(
+            @PathVariable Long turnuvaId,
+            @PathVariable Long stageId) {
+
+        matchingService.distributeApplicationsToGroups(turnuvaId, stageId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Başvurular başarıyla gruplara dağıtıldı.", null));
+    }
+}

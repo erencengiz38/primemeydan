@@ -46,12 +46,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             User user = userRepository.findByMail(mail).orElse(null);
 
             if (user != null && jwtService.isTokenValid(token, user.getMail())) {
-                // KRİTİK DÜZELTME:
-                // İlk parametreye 'user' nesnesi yerine 'user.getMail()' (yani String) veriyoruz.
-                // Böylece principal.getName() dediğinde direkt mail adresi dönecek.
+                // BURAYI DEĞİŞTİRDİK:
+                // İlk parametreye user.getMail() yerine user.getId().toString() veriyoruz.
+                // Artık sistemin her yerinde principal.getName() dediğinde direkt sayı (ID) dönecek.
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
-                                user.getMail(),
+                                user.getId().toString(), // ARTIK BURASI ID!
                                 null,
                                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getTag()))
                         );

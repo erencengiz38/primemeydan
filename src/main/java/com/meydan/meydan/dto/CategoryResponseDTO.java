@@ -1,5 +1,6 @@
 package com.meydan.meydan.dto;
 
+import com.meydan.meydan.models.enums.CategoryType;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -11,6 +12,7 @@ public class CategoryResponseDTO {
     private String description;
     private String slug;
     private Long parentId;
+    private CategoryType type;
     private Boolean isActive;
     private LocalDateTime createdAt;
 }

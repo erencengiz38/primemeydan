@@ -12,7 +12,11 @@ public enum ErrorCode {
     TRN_003("TRN_003", "Turnuva güncellenirken hata oluştu"),
     TRN_004("TRN_004", "Turnuva silinirken hata oluştu"),
     TRN_005("TRN_005", "Turnuva listelenirken hata oluştu"),
-    
+    TRN_006("TRN_006", "Aşama bulunamadı"),
+    TRN_007("TRN_007", "Belirtilen aşama bu turnuvaya ait değil"),
+    TRN_008("TRN_008", "Aşamaya ait grup (A, B vs.) bulunamadı"),
+    TRN_009("TRN_009", "Dağıtılacak kabul edilmiş başvuru bulunamadı"),
+    TRN_010("TRN_010", "Turnuva formatı geçersiz"),
     // Link validation errors (LINK_XXX)
     LINK_001("LINK_001", "Geçersiz sosyal ağ URL'si - Instagram, WhatsApp, Discord veya Telegram kullanınız"),
     LINK_002("LINK_002", "URL formatı hatalı"),

@@ -1,7 +1,7 @@
 package com.meydan.meydan.repository;
 
 import com.meydan.meydan.models.entities.TournamentApplication;
-import com.meydan.meydan.models.entities.TournamentApplicationStatus;
+import com.meydan.meydan.models.enums.TournamentApplicationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +22,9 @@ public interface TournamentApplicationRepository extends JpaRepository<Tournamen
     List<TournamentApplication> findByClanId(Long clanId);
 
     List<TournamentApplication> findByTournamentIdAndStatus(Long tournamentId, TournamentApplicationStatus status);
+    
+    // Yeni eklenen metot: Sadece onaylı VE yoklama (check-in) yapmış olanları getir
+    List<TournamentApplication> findByTournamentIdAndStatusAndIsCheckedInTrue(Long tournamentId, TournamentApplicationStatus status);
 
     Optional<TournamentApplication> findByTournamentIdAndUserId(Long tournamentId, Long userId);
 

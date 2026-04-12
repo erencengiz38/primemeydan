@@ -1,5 +1,7 @@
 package com.meydan.meydan.models.entities;
 
+import com.meydan.meydan.models.enums.ClanInvitationStatus;
+import com.meydan.meydan.models.enums.ClanInvitationType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

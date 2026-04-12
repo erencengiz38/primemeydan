@@ -1,5 +1,6 @@
 package com.meydan.meydan.models.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -16,6 +17,7 @@ public class TournamentApplicationPlayer {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tournament_application_id", nullable = false)
+    @JsonIgnore // Sonsuz döngüyü kırmak için bu alanı JSON'a çevirme
     private TournamentApplication tournamentApplication;
 
     @Column(name = "clan_member_id", nullable = false)

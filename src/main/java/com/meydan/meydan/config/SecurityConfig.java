@@ -21,12 +21,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // KANKA 1: CorsConfig sınıfını Security'e tanıtıyoruz ki Next.js'i düşman sanmasın
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
+                        // KANKA 2: ASIL ÇÖZÜM BURASI! "/auth/**" yerine "/api/auth/**" yaptık.
+                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/turnuva/list").permitAll()
                         .requestMatchers("/api/**").authenticated()

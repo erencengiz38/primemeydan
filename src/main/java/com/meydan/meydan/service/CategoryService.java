@@ -2,10 +2,11 @@ package com.meydan.meydan.service;
 
 import com.meydan.meydan.dto.CategoryResponseDTO;
 import com.meydan.meydan.models.entities.Category;
+import com.meydan.meydan.models.enums.CategoryType;
 import com.meydan.meydan.repository.CategoryRepository;
-import com.meydan.meydan.request.Auth.Category.AddCategoryRequestBody;
-import com.meydan.meydan.request.Auth.Category.DeleteCategoryRequestBody;
-import com.meydan.meydan.request.Auth.Category.UpdateCategoryRequestBody;
+import com.meydan.meydan.request.Category.AddCategoryRequestBody;
+import com.meydan.meydan.request.Category.DeleteCategoryRequestBody;
+import com.meydan.meydan.request.Category.UpdateCategoryRequestBody;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,14 +26,19 @@ public class CategoryService {
     private final CategoryRepository categoryRepository;
     private final ModelMapper modelMapper;
 
-    public List<Category> getAllCategories() {
+    public List<Category> getAllCategories(CategoryType type) {
+        if (type != null) {
+            return categoryRepository.findByTypeAndParentIsNullAndIsActiveTrue(type);
+        }
         return categoryRepository.findByParentIsNullAndIsActiveTrue();
     }
 
-    public Page<Category> getAllCategoriesWithPagination(Pageable pageable) {
+    public Page<Category> getAllCategoriesWithPagination(CategoryType type, Pageable pageable) {
+        if (type != null) {
+            return categoryRepository.findByTypeAndParentIsNullAndIsActiveTrue(type, pageable);
+        }
         return categoryRepository.findByParentIsNullAndIsActiveTrue(pageable);
     }
-
 
     public Category getCategoryById(Long id) {
         return categoryRepository.findById(id)
@@ -68,13 +74,15 @@ public class CategoryService {
         // 4. Slug generate et ve benzersiz yap
         category.setSlug(generateUniqueSlug(addCategoryRequestBody.getName(), null));
 
-        // 5. Veritabanına Kaydet
+        // 5. Type set et
+        category.setType(addCategoryRequestBody.getType());
+
+        // 6. Veritabanına Kaydet
         Category savedCategory = categoryRepository.save(category);
 
-        // 6. Response DTO'ya dönüştür
+        // 7. Response DTO'ya dönüştür
         CategoryResponseDTO responseDTO = modelMapper.map(savedCategory, CategoryResponseDTO.class);
         
-        // ModelMapper parentId'yi otomatik eşleyemezse manuel ekleyelim
         if (savedCategory.getParent() != null) {
             responseDTO.setParentId(savedCategory.getParent().getId());
         }
@@ -118,6 +126,10 @@ public class CategoryService {
         category.setName(updateCategoryRequestBody.getName());
         category.setImage(updateCategoryRequestBody.getImage());
         category.setDescription(updateCategoryRequestBody.getDescription());
+        
+        if (updateCategoryRequestBody.getType() != null) {
+            category.setType(updateCategoryRequestBody.getType());
+        }
 
         // Slug'ı yeniden generate et ve benzersiz yap (isim değiştiyse veya her ihtimale karşı güncelleniyorsa)
         category.setSlug(generateUniqueSlug(category.getName(), category.getId()));

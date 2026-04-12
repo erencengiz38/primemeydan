@@ -6,11 +6,13 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 
 @SpringBootApplication
+@EnableScheduling // Zamanlanmış görevler (Doping kontrolü vb.) için eklendi
 public class MeydanApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MeydanApplication.class);
@@ -36,4 +38,3 @@ public class MeydanApplication {
         };
     }
 }
-

@@ -1,7 +1,7 @@
 package com.meydan.meydan.repository;
 
 import com.meydan.meydan.models.entities.ClanInvitation;
-import com.meydan.meydan.models.entities.ClanInvitationStatus;
+import com.meydan.meydan.models.enums.ClanInvitationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -3,6 +3,7 @@ package com.meydan.meydan.models.entities;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.meydan.meydan.models.enums.CategoryType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -38,6 +39,10 @@ public class Category {
 
     @Column(unique = true, nullable = false)
     private String slug; // SEO-friendly URL için
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
+    private CategoryType type; // GAME, ORGANIZATION, TOURNAMENT, OTHER
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")

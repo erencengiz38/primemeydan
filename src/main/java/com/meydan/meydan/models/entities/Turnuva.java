@@ -1,41 +1,64 @@
 package com.meydan.meydan.models.entities;
 
+import com.meydan.meydan.models.enums.ParticipantType;
+import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
-import org.hibernate.annotations.Generated;
-import org.hibernate.generator.EventType;
-
+import lombok.NoArgsConstructor;
 import java.util.Date;
-import java.util.UUID;
 
 @Entity
 @Table(name = "turnuva")
 @Data
-public class Turnuva {
+@AllArgsConstructor
+@NoArgsConstructor
+public class Turnuva extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String title;
 
-    @Generated(event = EventType.INSERT)
-    @Column(columnDefinition = "uuid DEFAULT gen_random_uuid()", insertable = false, updatable = false)
-    private UUID oid;
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
+    private Date start_date;
+    private Date finish_date;
+
+    @Column(name = "registration_deadline")
+    private Date registrationDeadline;
+
+    private String imageUrl;
+    private Double reward_amount;
+    private String reward_currency;
+    private String player_format; // Örn: "5v5", "Duo"
+
+    @Enumerated(EnumType.STRING)
+    private ParticipantType participantType; // SOLO, CLAN
+
+    @Enumerated(EnumType.STRING)
+    private TournamentFormat tournamentFormat; // SCRIM, STAGE_BASED
+
+    @Column(name = "organization_id")
     private Long organizationId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
-    private String title;
-    private String description;
-    private Date start_date;
-    private Date finish_date;
-    private Boolean isActive;
-    private String imageUrl;
-    private String link;
-    private String link_type;
-    private Double reward_amount;
-    private String reward_currency;
-    private String player_format;
-    @Enumerated(EnumType.STRING)
-    private ParticipantType participantType = ParticipantType.SOLO;
+
+    private Boolean isActive = true;
+
+    // --- YENİ EKLENEN ESNEK MOTOR ALANLARI ---
+    @Column(name = "max_participants")
+    private Integer maxParticipants;
+
+    @Column(name = "min_participants")
+    private Integer minParticipants;
+
+    @Column(name = "team_size")
+    private Integer teamSize; // PUBG için 4, CS için 5, Solo için 1
+
+    @Column(name = "match_capacity")
+    private Integer matchCapacity; // Bir maçta kaç takım/kişi yarışır? (CS: 2, PUBG: 20)
+
+    @Column(name = "current_participants_count")
+    private Integer currentParticipantsCount = 0;
 }

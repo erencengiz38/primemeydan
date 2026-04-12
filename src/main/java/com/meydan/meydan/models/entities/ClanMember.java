@@ -1,6 +1,7 @@
 package com.meydan.meydan.models.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.meydan.meydan.models.enums.ClanMemberRole;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
