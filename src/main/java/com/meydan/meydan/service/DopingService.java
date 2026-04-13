@@ -15,6 +15,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -32,6 +33,9 @@ public class DopingService {
     private final ClanMemberRepository clanMemberRepository;
     private final OrganizationMembershipRepository organizationMembershipRepository;
     private final TurnuvaRepository turnuvaRepository;
+    
+    // MADDE 1: WalletService inject edildi
+    private final WalletService walletService;
 
     // --- Mağaza: Aktif Paketleri Getir ---
     public List<DopingPackage> getAllActivePackages() {
@@ -73,7 +77,6 @@ public class DopingService {
                 break;
             case LISTING:
                 // İleride İlan/Listing eklendiğinde burası dolacak
-                // hasPermission = listingRepository.existsByIdAndUserId(targetId, userId);
                 break;
         }
     }
@@ -97,10 +100,26 @@ public class DopingService {
             throw new BaseException(ErrorCode.VAL_001, "Bu doping paketi seçili hedefe uygulanamaz. Hedef tipi: " + targetType, HttpStatus.BAD_REQUEST, "");
         }
 
-        // TODO: Bakiye (Coin/TL) düşüm işlemi burada yapılmalıdır.
-        // UserWallet wallet = walletService.findByUserId(userId);
-        // walletService.deductBalance(userId, dopingPackage.getPrice());
+        // MADDE 2: ÇİFTE ALIM / SPAM KONTROLÜ
+        List<ActiveDoping> activeDopings = activeDopingRepository.findByTargetTypeAndTargetIdAndIsActiveTrue(targetType, targetId);
+        boolean hasSameActivePackage = activeDopings.stream()
+                .anyMatch(ad -> ad.getDopingPackage().getId().equals(packageId));
+        
+        if (hasSameActivePackage) {
+            throw new BaseException(
+                    ErrorCode.VAL_001, 
+                    "Bu hedef için aynı doping paketi şu anda zaten aktif durumda. Süresi bitmeden tekrar alamazsınız.", 
+                    HttpStatus.BAD_REQUEST, 
+                    ""
+            );
+        }
 
+        // MADDE 1: Bakiye (Coin/TL) düşüm işlemi (WalletService üzerinden)
+        BigDecimal price = BigDecimal.valueOf(dopingPackage.getPrice());
+        String purchaseDescription = dopingPackage.getName() + " paketi satın alındı. Hedef: " + targetType + " ID: " + targetId;
+        walletService.processRealPurchase(userId, price, purchaseDescription);
+
+        // 3. ActiveDoping Kaydı Oluşturma
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime endDate = now.plusHours(dopingPackage.getDurationHours());
 

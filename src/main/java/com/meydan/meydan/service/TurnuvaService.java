@@ -518,4 +518,7 @@ public class TurnuvaService {
 
         return tournamentApplicationRepository.save(application);
     }
+
+    public void applyToTournament(long l, long l1) {
+    }
 }

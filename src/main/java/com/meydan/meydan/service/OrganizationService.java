@@ -9,6 +9,8 @@ import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class OrganizationService {
@@ -54,5 +56,13 @@ public class OrganizationService {
         membershipRepository.save(membership);
 
         return savedOrganization.getId();
+    }
+
+    public List<Organization> getAllOrganizations() {
+        return organizationRepository.findAll();
+    }
+
+    public List<OrganizationMembership> getOrganizationMembers(Long organizationId) {
+        return membershipRepository.findByOrganizationId(organizationId);
     }
 }

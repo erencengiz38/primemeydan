@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -83,10 +84,10 @@ public class DopingController {
     
     @PostMapping("/admin/packages/create")
     @Operation(summary = "Yeni bir Doping Paketi oluştur (Sadece Sistem Yöneticisi)")
+    @PreAuthorize("hasRole('ADMIN')") // MADDE 3: Admin yetkisi eklendi
     public ResponseEntity<ApiResponse<DopingPackage>> createDopingPackage(
             @Valid @RequestBody DopingPackage dopingPackage) {
             
-        // Not: Gerçek senaryoda bu metoda @PreAuthorize("hasRole('ROLE_SYS_ADMIN')") gibi ekstra Admin koruması eklenmelidir.
         DopingPackage createdPackage = dopingService.createDopingPackage(dopingPackage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(true, "Doping paketi mağazaya eklendi", createdPackage));
