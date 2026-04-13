@@ -64,7 +64,7 @@ public class WalletService {
     }
 
     // --- Yardımcı Metot: Kullanıcının Cüzdanını Getir veya Oluştur ---
-    private Wallet getOrCreateWallet(Long userId) {
+    public Wallet getOrCreateWallet(Long userId) {
         return walletRepository.findByUserId(userId).orElseGet(() -> {
             Wallet newWallet = new Wallet();
             newWallet.setUserId(userId);
@@ -72,6 +72,12 @@ public class WalletService {
             newWallet.setMeydanCoin(BigDecimal.ZERO);
             return walletRepository.save(newWallet);
         });
+    }
+
+    // --- Kullanıcının İşlem Geçmişini Getir ---
+    public List<WalletTransaction> getWalletTransactions(Long userId) {
+        Wallet wallet = getOrCreateWallet(userId);
+        return walletTransactionRepository.findByWalletIdOrderByTransactionDateDesc(wallet.getId());
     }
 
     /**

@@ -11,6 +11,7 @@ import com.meydan.meydan.request.Turnuva.ApplyToTournamentRequestBody;
 import com.meydan.meydan.request.Turnuva.UpdateApplicationStatusRequestBody;
 import com.meydan.meydan.request.Turnuva.UpdateTurnuvaRequestBody;
 import com.meydan.meydan.request.Turnuva.RespondToTournamentInviteRequest;
+import com.meydan.meydan.request.Turnuva.RewardReportRequest;
 import com.meydan.meydan.service.TurnuvaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,7 +83,6 @@ public class TurnuvaController {
         Turnuva updatedTurnuva = turnuvaService.updateTurnuva(request, organizationId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva güncellendi", mapToTurnuvaDTO(updatedTurnuva)));
     }
-
 
     @DeleteMapping("/{id}/{organizationId}")
     @Operation(summary = "Turnuvayı sil", description = "Soft delete işlemi")
@@ -193,6 +193,14 @@ public class TurnuvaController {
                 .map(this::mapToApplicationDTO).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Başvurular getirildi", dtoList));
     }
+    
+    @GetMapping("/{tournamentId}/participants")
+    @Operation(summary = "Turnuvaya katılan onaylı takımları (Asil Kadro) listele")
+    public ResponseEntity<ApiResponse<List<TournamentApplicationResponseDTO>>> getTournamentParticipants(@PathVariable Long tournamentId) {
+        List<TournamentApplicationResponseDTO> dtoList = turnuvaService.getTournamentParticipants(tournamentId).stream()
+                .map(this::mapToApplicationDTO).collect(Collectors.toList());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva katılımcıları getirildi", dtoList));
+    }
 
     @GetMapping("/my/applications")
     @Operation(summary = "Kendi başvurularımı listele")
@@ -242,5 +250,17 @@ public class TurnuvaController {
 
         TournamentApplication application = turnuvaService.performCheckIn(tournamentId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Check-in başarılı", mapToApplicationDTO(application)));
+    }
+    
+    // --- 5. FİNANS VE ÖDÜL ---
+    
+    @PostMapping("/{tournamentId}/finish")
+    @Operation(summary = "Turnuvayı Bitir ve Ödülleri Dağıt", description = "Sadece organizatör yapabilir. Ödül havuzundaki MEYDAN_COIN'ler, kazanan takımların oyuncularına eşit paylaştırılır.")
+    public ResponseEntity<ApiResponse<Void>> finishTournament(
+            @PathVariable Long tournamentId,
+            @Valid @RequestBody RewardReportRequest request) {
+
+        turnuvaService.finishTournamentAndDistributeRewards(tournamentId, request);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva başarıyla bitirildi ve ödüller cüzdanlara dağıtıldı.", null));
     }
 }

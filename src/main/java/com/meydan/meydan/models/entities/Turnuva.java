@@ -1,6 +1,5 @@
 package com.meydan.meydan.models.entities;
 
-import com.meydan.meydan.models.enums.ParticipantType;
 import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -32,9 +31,6 @@ public class Turnuva extends BaseEntity {
     private String player_format; // Örn: "5v5", "Duo"
 
     @Enumerated(EnumType.STRING)
-    private ParticipantType participantType; // SOLO, CLAN
-
-    @Enumerated(EnumType.STRING)
     private TournamentFormat tournamentFormat; // SCRIM, STAGE_BASED
 
     @Column(name = "organization_id")
@@ -53,8 +49,12 @@ public class Turnuva extends BaseEntity {
     @Column(name = "min_participants")
     private Integer minParticipants;
 
-    @Column(name = "team_size")
-    private Integer teamSize; // PUBG için 4, CS için 5, Solo için 1
+    // Yeni: Kadro büyüklükleri
+    @Column(name = "min_team_size")
+    private Integer minTeamSize;
+
+    @Column(name = "max_team_size")
+    private Integer maxTeamSize;
 
     @Column(name = "match_capacity")
     private Integer matchCapacity; // Bir maçta kaç takım/kişi yarışır? (CS: 2, PUBG: 20)

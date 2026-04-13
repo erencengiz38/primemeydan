@@ -15,7 +15,9 @@ public class ApplyToTournamentRequestBody {
     @NotNull(message = "Turnuva ID boş olamaz")
     private Long tournamentId;
 
-    private Long clanId; // Nullable - for representing a clan in 1v1 or for Team apps
+    @NotNull(message = "Klan ID boş olamaz")
+    private Long clanId; 
 
-    private List<Long> selectedClanMemberIds; // For team-based tournaments, selected players
+    @NotNull(message = "Seçilen oyuncular (User ID'leri) boş olamaz")
+    private List<Long> selectedClanMemberIds;
 }

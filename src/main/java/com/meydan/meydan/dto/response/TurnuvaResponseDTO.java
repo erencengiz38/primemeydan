@@ -22,12 +22,12 @@ public class TurnuvaResponseDTO {
     private Double reward_amount;
     private String reward_currency;
     private String player_format;
-    private String participantType;
     private String tournamentFormat;
     private Date registrationDeadline;
     private Integer maxParticipants;
     private Integer minParticipants;
-    private Integer teamSize;
+    private Integer minTeamSize;
+    private Integer maxTeamSize;
     private Integer matchCapacity;
     private Integer currentParticipantsCount;
 }

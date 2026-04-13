@@ -7,8 +7,6 @@ import com.meydan.meydan.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.meydan.meydan.models.entities.OrganizationMembership;
-import com.meydan.meydan.models.entities.OrganizationMembershipId;
 import java.util.List;
 
 @Service
@@ -50,6 +48,12 @@ public class OrganizationApplicationService {
     public List<OrganizationApplication> getPendingApplications(Long organizationId, Long requesterId) {
         checkOrganizerPermission(organizationId, requesterId);
         return applicationRepository.findByOrganizationIdAndStatus(organizationId, ApplicationStatus.PENDING);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrganizationApplication> getAllApplications(Long organizationId, Long requesterId) {
+        checkOrganizerPermission(organizationId, requesterId);
+        return applicationRepository.findByOrganizationId(organizationId);
     }
 
     @Transactional
@@ -101,25 +105,18 @@ public class OrganizationApplicationService {
     @Transactional
     public void updateApplicationStatus(Long applicationId, Long approverId, ApplicationStatus status) {
 
-        // 1. Veritabanından başvuruyu bul, yoksa hata fırlat
         OrganizationApplication application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new RuntimeException("Başvuru bulunamadı."));
 
-        // 2. Başvuru hala beklemede mi (PENDING) kontrol et. Zaten onaylanmış/reddedilmişse işlem yapma
         if (application.getStatus() != ApplicationStatus.PENDING) {
             throw new RuntimeException("Bu başvuru zaten sonuçlandırılmış.");
         }
 
-        // 3. İsteği atan kişinin (approverId) bu organizasyonda OWNER veya ADMIN yetkisi var mı kontrol et
         checkOrganizerPermission(application.getOrganization().getId(), approverId);
 
-        // 4. Gelen statüye (status) göre işlemi yap
         if (status == ApplicationStatus.APPROVED) {
-
-            // Başvuruyu onaylandı olarak işaretle
             application.setStatus(ApplicationStatus.APPROVED);
 
-            // Kullanıcıyı organizasyonun üyeleri tablosuna MEMBER olarak ekle
             OrganizationMembership membership = new OrganizationMembership();
             membership.setId(new OrganizationMembershipId(application.getOrganization().getId(), application.getUser().getId()));
             membership.setOrganization(application.getOrganization());
@@ -129,15 +126,11 @@ public class OrganizationApplicationService {
             membershipRepository.save(membership);
 
         } else if (status == ApplicationStatus.REJECTED) {
-
-            // Sadece başvuruyu reddedildi olarak işaretle, üye yapma
             application.setStatus(ApplicationStatus.REJECTED);
-
         } else {
             throw new RuntimeException("Geçersiz statü işlemi.");
         }
 
-        // 5. Başvurunun güncellenmiş statüsünü veritabanına kaydet
         applicationRepository.save(application);
     }
 }

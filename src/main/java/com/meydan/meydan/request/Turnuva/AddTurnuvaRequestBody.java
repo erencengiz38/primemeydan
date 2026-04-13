@@ -1,6 +1,5 @@
 package com.meydan.meydan.request.Turnuva;
 
-import com.meydan.meydan.models.enums.ParticipantType;
 import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -32,14 +31,14 @@ public class AddTurnuvaRequestBody {
 
     private Integer minParticipants = 2;
 
-    @NotNull(message = "Takım boyutu (teamSize) gereklidir")
-    private Integer teamSize;
+    @NotNull(message = "Minimum takım boyutu (minTeamSize) gereklidir")
+    private Integer minTeamSize;
+
+    @NotNull(message = "Maksimum takım boyutu (maxTeamSize) gereklidir")
+    private Integer maxTeamSize;
 
     @NotNull(message = "Maç kapasitesi (matchCapacity) gereklidir")
     private Integer matchCapacity;
-
-    @NotNull(message = "Katılımcı tipi (SOLO/CLAN) gereklidir")
-    private ParticipantType participantType;
 
     @NotNull(message = "Turnuva formatı (SCRIM/STAGE_BASED) gereklidir")
     private TournamentFormat tournamentFormat;
@@ -48,5 +47,4 @@ public class AddTurnuvaRequestBody {
     private Double reward_amount;
     private String reward_currency;
     private String player_format;
-
 }

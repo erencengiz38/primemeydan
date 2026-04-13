@@ -162,6 +162,14 @@ public class ClanController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Clanın bekleyen işlemleri getirildi.", dtoList));
     }
 
+    @GetMapping("/{clanId}/applications")
+    @Operation(summary = "Bir clana gelen tüm başvuruları listele (Owner/Manager)")
+    public ResponseEntity<ApiResponse<List<ClanInvitationResponseDTO>>> getClanApplications(@PathVariable Long clanId) {
+        List<ClanInvitationResponseDTO> dtoList = clanService.getClanApplications(clanId).stream()
+                .map(this::mapToClanInvitationDTO).collect(Collectors.toList());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Clana gelen başvurular getirildi.", dtoList));
+    }
+
     // --- Member Management Endpoints ---
 
     @GetMapping("/{clanId}/members")

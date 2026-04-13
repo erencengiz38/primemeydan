@@ -8,6 +8,8 @@ import com.meydan.meydan.models.enums.TournamentApplicationStatus;
 import com.meydan.meydan.repository.*;
 import com.meydan.meydan.request.Turnuva.CreateStageRequest;
 import com.meydan.meydan.request.Turnuva.CreateGroupRequest;
+import com.meydan.meydan.request.Turnuva.GroupScoreListRequest;
+import com.meydan.meydan.request.Turnuva.GroupScoreRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -31,7 +33,7 @@ public class TournamentMatchingService {
     private final TournamentApplicationRepository applicationRepository;
     private final TurnuvaRepository turnuvaRepository;
     private final OrganizationMembershipRepository organizationMembershipRepository;
-
+    private final TournamentGroupScoreRepository scoreRepository; // Puanlama için eklendi
 
     // --- GÜVENLİK: BOLA KORUMASI ---
     private void checkOrganizationPermission(Long turnuvaId) {
@@ -77,8 +79,6 @@ public class TournamentMatchingService {
         }
 
         try {
-            // Assuming the principal is the User's ID as a String, or a User object
-            // If it's a User object, you might need to cast and get the ID: ((User) authentication.getPrincipal()).getId();
             return Long.parseLong(authentication.getName());
         } catch (NumberFormatException e) {
             throw new BaseException(
@@ -229,5 +229,47 @@ public class TournamentMatchingService {
 
         // Hazırlanan listeyi tek seferde veritabanına yaz
         assignmentRepository.saveAll(newAssignments);
+    }
+
+    // --- LOBİ/GRUP PUANLAMA VE ELEME SİSTEMİ ---
+    
+    @Transactional
+    public void reportGroupScores(Long turnuvaId, Long groupId, GroupScoreListRequest request) {
+        checkOrganizationPermission(turnuvaId);
+        Long reporterId = getCurrentUserId();
+        
+        TournamentGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRN_006, "Grup bulunamadı.", HttpStatus.NOT_FOUND, "Grup ID: " + groupId));
+                
+        if (!group.getStage().getTurnuva().getId().equals(turnuvaId)) {
+            throw new BaseException(ErrorCode.VAL_001, "Grup bu turnuvaya ait değil.", HttpStatus.BAD_REQUEST, "");
+        }
+        
+        List<TournamentGroupScore> newScores = new ArrayList<>();
+        
+        for (GroupScoreRequest scoreReq : request.getScores()) {
+            TournamentApplication app = applicationRepository.findById(scoreReq.getApplicationId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Başvuru bulunamadı", HttpStatus.NOT_FOUND, "App ID: " + scoreReq.getApplicationId()));
+                    
+            TournamentGroupScore score = scoreRepository.findByGroupIdAndApplicationId(groupId, app.getId())
+                    .orElse(new TournamentGroupScore());
+                    
+            score.setGroup(group);
+            score.setApplication(app);
+            score.setScore(scoreReq.getScore());
+            if (scoreReq.getPlacement() != null) score.setPlacement(scoreReq.getPlacement());
+            if (scoreReq.getIsAdvanced() != null) score.setIsAdvanced(scoreReq.getIsAdvanced());
+            
+            score.setReportedById(reporterId);
+            score.setUpdatedAt(java.time.LocalDateTime.now());
+            
+            newScores.add(score);
+        }
+        
+        scoreRepository.saveAll(newScores);
+    }
+    
+    public List<TournamentGroupScore> getGroupScores(Long groupId) {
+        return scoreRepository.findByGroupIdOrderByScoreDesc(groupId);
     }
 }

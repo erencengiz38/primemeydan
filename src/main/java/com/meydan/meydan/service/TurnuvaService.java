@@ -2,24 +2,11 @@ package com.meydan.meydan.service;
 
 import com.meydan.meydan.exception.BaseException;
 import com.meydan.meydan.exception.ErrorCode;
-import com.meydan.meydan.models.entities.Category;
-import com.meydan.meydan.models.entities.Clan;
-import com.meydan.meydan.models.entities.ClanMember;
-import com.meydan.meydan.models.entities.TournamentApplication;
-import com.meydan.meydan.models.entities.TournamentApplicationPlayer;
-import com.meydan.meydan.models.entities.TournamentStage;
-import com.meydan.meydan.models.entities.Turnuva;
-import com.meydan.meydan.models.enums.ClanMemberRole;
-import com.meydan.meydan.models.enums.OrganizationRole;
-import com.meydan.meydan.models.enums.ParticipantType;
-import com.meydan.meydan.models.enums.TournamentApplicationStatus;
-import com.meydan.meydan.models.enums.TournamentFormat;
+import com.meydan.meydan.exception.PlayerAlreadyBusyException;
+import com.meydan.meydan.models.entities.*;
+import com.meydan.meydan.models.enums.*;
 import com.meydan.meydan.repository.*;
-import com.meydan.meydan.request.Turnuva.AddTurnuvaRequestBody;
-import com.meydan.meydan.request.Turnuva.ApplyToTournamentRequestBody;
-import com.meydan.meydan.request.Turnuva.UpdateApplicationStatusRequestBody;
-import com.meydan.meydan.request.Turnuva.UpdateTurnuvaRequestBody;
-import com.meydan.meydan.request.Turnuva.RespondToTournamentInviteRequest;
+import com.meydan.meydan.request.Turnuva.*;
 import com.meydan.meydan.util.SocialMediaValidator;
 import com.meydan.meydan.util.XssSanitizer;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +21,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -52,10 +41,11 @@ public class TurnuvaService {
     private final TournamentApplicationRepository tournamentApplicationRepository;
     private final TournamentApplicationPlayerRepository tournamentApplicationPlayerRepository;
     private final OrganizationMembershipRepository organizationMembershipRepository;
+    private final OrganizationQuotaRepository organizationQuotaRepository; // KOTA
     private final TournamentStageRepository tournamentStageRepository;
+    private final WalletService walletService; // CÜZDAN VE ÖDÜL İÇİN EKLENDİ
     private final ModelMapper modelMapper;
     private final XssSanitizer xssSanitizer;
-    private final OrganizationService organizationService;
     private final SocialMediaValidator socialMediaValidator;
 
     // --- HELPER: GET CURRENT USER ID ---
@@ -63,57 +53,60 @@ public class TurnuvaService {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
-            throw new BaseException(
-                    ErrorCode.AUTH_002,
-                    "Kullanıcı oturumu bulunamadı. Lütfen giriş yapın.",
-                    HttpStatus.UNAUTHORIZED,
-                    "Authentication: " + authentication
-            );
+            throw new BaseException(ErrorCode.AUTH_002, "Kullanıcı oturumu bulunamadı. Lütfen giriş yapın.", HttpStatus.UNAUTHORIZED, "Authentication: " + authentication);
         }
 
         try {
             return Long.parseLong(authentication.getName());
         } catch (NumberFormatException e) {
-            throw new BaseException(
-                    ErrorCode.AUTH_003,
-                    "Kullanıcı kimliği doğrulanamadı.",
-                    HttpStatus.UNAUTHORIZED,
-                    "Principal: " + authentication.getPrincipal()
-            );
+            throw new BaseException(ErrorCode.AUTH_003, "Kullanıcı kimliği doğrulanamadı.", HttpStatus.UNAUTHORIZED, "Principal: " + authentication.getPrincipal());
         }
     }
 
     // --- ORTAK BOLA (YETKİ) KONTROLÜ METODU ---
     private void checkOrgPermission(Long organizationId) {
         Long userId = getCurrentUserId();
-        boolean hasPermission = organizationMembershipRepository.existsByOrganizationIdAndUserIdAndRoleIn(
+        
+        boolean isDirectOwner = organizationId.equals(userId);
+        boolean hasPermission = isDirectOwner || organizationMembershipRepository.existsByOrganizationIdAndUserIdAndRoleIn(
                 organizationId, userId, Arrays.asList(OrganizationRole.OWNER, OrganizationRole.ADMIN));
+                
         if (!hasPermission) {
-            throw new BaseException(
-                    ErrorCode.TRN_002,
-                    "Bu işlem için organizasyon yetkiniz (OWNER/ADMIN) yok.",
-                    HttpStatus.FORBIDDEN,
-                    "OrgId: " + organizationId + ", UserId: " + userId
-            );
+            throw new BaseException(ErrorCode.TRN_002, "Bu işlem için organizasyon yetkiniz (OWNER/ADMIN) yok.", HttpStatus.FORBIDDEN, "OrgId: " + organizationId + ", UserId: " + userId);
         }
     }
 
     @Transactional
     public Turnuva createTurnuva(AddTurnuvaRequestBody request, Long organizationId) {
-        // 1. Yetki Kontrolü
         checkOrgPermission(organizationId);
 
-        // 2. Kategori Kontrolü
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Geçersiz kategori", HttpStatus.BAD_REQUEST, ""));
 
-        // 3. TARİH MANTIK KONTROLÜ
         if (request.getRegistrationDeadline() != null && request.getStart_date() != null &&
                 request.getRegistrationDeadline().after(request.getStart_date())) {
             throw new BaseException(ErrorCode.VAL_001, "Kayıt kapanış tarihi (Deadline), turnuva başlama tarihinden sonra olamaz!", HttpStatus.BAD_REQUEST, "");
         }
 
-        // 4. MANUEL MAPPING
+        if (request.getMinTeamSize() == null || request.getMaxTeamSize() == null || request.getMinTeamSize() < 1 || request.getMaxTeamSize() < request.getMinTeamSize()) {
+            throw new BaseException(ErrorCode.VAL_001, "Geçersiz takım boyutu. MinTeamSize ve MaxTeamSize değerlerini doğru giriniz.", HttpStatus.BAD_REQUEST, "");
+        }
+
+        // KOTA KONTROLÜ (WEEKLY QUOTA)
+        OrganizationQuota quota = organizationQuotaRepository.findById(organizationId)
+                .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Organizasyon kotası bulunamadı. Lütfen organizasyon ayarlarını kontrol edin.", HttpStatus.BAD_REQUEST, "OrgId: " + organizationId));
+
+        BigDecimal rewardAmount = BigDecimal.valueOf(request.getReward_amount() != null ? request.getReward_amount() : 0.0);
+        BigDecimal availableQuota = quota.getWeeklyLimit().subtract(quota.getCurrentSpent());
+
+        if (rewardAmount.compareTo(availableQuota) > 0) {
+            throw new BaseException(ErrorCode.VAL_001, "Organizasyon haftalık ödül kotanız aşıldı! Kalan Kotanız: " + availableQuota + " MC", HttpStatus.BAD_REQUEST, "Requested: " + rewardAmount);
+        }
+
+        // Kotayı güncelle
+        quota.setCurrentSpent(quota.getCurrentSpent().add(rewardAmount));
+        organizationQuotaRepository.save(quota);
+
         Turnuva turnuva = new Turnuva();
         turnuva.setTitle(request.getTitle());
         turnuva.setDescription(request.getDescription());
@@ -121,15 +114,14 @@ public class TurnuvaService {
         turnuva.setFinish_date(request.getFinish_date());
         turnuva.setImageUrl(request.getImageUrl());
         turnuva.setReward_amount(request.getReward_amount());
-        turnuva.setReward_currency(request.getReward_currency());
+        turnuva.setReward_currency(request.getReward_currency() != null ? request.getReward_currency() : "MEYDAN_COIN"); // Default MC
         turnuva.setPlayer_format(request.getPlayer_format());
-        turnuva.setParticipantType(request.getParticipantType());
         turnuva.setTournamentFormat(request.getTournamentFormat());
-
         turnuva.setRegistrationDeadline(request.getRegistrationDeadline());
         turnuva.setMaxParticipants(request.getMaxParticipants());
         turnuva.setMinParticipants(request.getMinParticipants());
-        turnuva.setTeamSize(request.getTeamSize());
+        turnuva.setMinTeamSize(request.getMinTeamSize());
+        turnuva.setMaxTeamSize(request.getMaxTeamSize());
         turnuva.setMatchCapacity(request.getMatchCapacity());
         turnuva.setCurrentParticipantsCount(0);
 
@@ -138,14 +130,12 @@ public class TurnuvaService {
         turnuva.setOrganizationId(organizationId);
         turnuva.setIsActive(true);
 
-        // XSS Temizlikleri
         if (turnuva.getTitle() != null) turnuva.setTitle(xssSanitizer.sanitizeAndLimit(turnuva.getTitle(), 200));
         if (turnuva.getDescription() != null) turnuva.setDescription(xssSanitizer.sanitizeAndLimit(turnuva.getDescription(), 1000));
 
         Turnuva savedTurnuva = turnuvaRepository.save(turnuva);
         turnuvaRepository.flush();
 
-        // 5. Otomatik Aşama Oluşturma
         if (savedTurnuva.getTournamentFormat() == TournamentFormat.STAGE_BASED) {
             TournamentStage firstStage = new TournamentStage();
             firstStage.setTurnuva(savedTurnuva);
@@ -173,10 +163,23 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.TRN_002, "IDOR Koruması: Yetkisiz erişim", HttpStatus.FORBIDDEN, "");
         }
 
+        if (request.getMinTeamSize() != null && request.getMaxTeamSize() != null) {
+            if (request.getMinTeamSize() < 1 || request.getMaxTeamSize() < request.getMinTeamSize()) {
+                throw new BaseException(ErrorCode.VAL_001, "Geçersiz takım boyutu. MinTeamSize ve MaxTeamSize değerlerini doğru giriniz.", HttpStatus.BAD_REQUEST, "");
+            }
+            turnuva.setMinTeamSize(request.getMinTeamSize());
+            turnuva.setMaxTeamSize(request.getMaxTeamSize());
+        }
+
         turnuva.setTitle(xssSanitizer.sanitizeAndLimit(request.getTitle(), 200));
         turnuva.setDescription(xssSanitizer.sanitizeAndLimit(request.getDescription(), 1000));
         turnuva.setStart_date(request.getStart_date());
         turnuva.setFinish_date(request.getFinish_date());
+        
+        if (request.getMatchCapacity() != null) turnuva.setMatchCapacity(request.getMatchCapacity());
+        if (request.getMinParticipants() != null) turnuva.setMinParticipants(request.getMinParticipants());
+        if (request.getMaxParticipants() != null) turnuva.setMaxParticipants(request.getMaxParticipants());
+
         return turnuvaRepository.save(turnuva);
     }
 
@@ -184,6 +187,21 @@ public class TurnuvaService {
     public Turnuva deleteTurnuva(Long id, Long organizationId) {
         checkOrgPermission(organizationId);
         Turnuva turnuva = turnuvaRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
+        
+        // Turnuva iptal ediliyorsa kotayı iade et
+        if (turnuva.getIsActive()) {
+            OrganizationQuota quota = organizationQuotaRepository.findById(turnuva.getOrganizationId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Kota bulunamadı", HttpStatus.NOT_FOUND, ""));
+            
+            BigDecimal rewardAmount = BigDecimal.valueOf(turnuva.getReward_amount() != null ? turnuva.getReward_amount() : 0.0);
+            
+            // Eğer harcanan miktar iade miktarından büyük veya eşitse iade et (Eksiye düşmesini engelle)
+            if (quota.getCurrentSpent().compareTo(rewardAmount) >= 0) {
+                quota.setCurrentSpent(quota.getCurrentSpent().subtract(rewardAmount));
+                organizationQuotaRepository.save(quota);
+            }
+        }
+        
         turnuva.setIsActive(false);
         return turnuvaRepository.save(turnuva);
     }
@@ -193,6 +211,7 @@ public class TurnuvaService {
         checkOrgPermission(organizationId);
         Turnuva turnuva = turnuvaRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
         turnuva.setIsActive(true);
+        // Not: İptal edildiğinde iade edilen kota, tekrar restore edilince yeniden düşülebilir ama karmaşıklık yaratmaması için şimdilik admin onayı beklenir.
         return turnuvaRepository.save(turnuva);
     }
 
@@ -228,77 +247,64 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.APP_001, "Bu turnuvaya zaten başvurdunuz.", HttpStatus.BAD_REQUEST, "");
         }
 
+        if (request.getClanId() == null) {
+            throw new BaseException(ErrorCode.APP_002, "Tüm başvurular bir Clan (Takım) üzerinden yapılmalıdır. Clan ID zorunludur.", HttpStatus.BAD_REQUEST, "");
+        }
+
+        Clan clan = clanRepository.findById(request.getClanId())
+                .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
+
+        if (!clan.getCategory().getId().equals(tournament.getCategory().getId())) {
+            throw new BaseException(ErrorCode.APP_003, "Clan'ın kategorisi turnuva kategorisi ile uyuşmuyor", HttpStatus.BAD_REQUEST, "");
+        }
+
+        ClanMember member = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), applicantUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
+
+        if (member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN) {
+            throw new BaseException(ErrorCode.APP_004, "Sadece clan sahibi veya takım kaptanı turnuvaya başvurabilir", HttpStatus.FORBIDDEN, "");
+        }
+
+        if (request.getSelectedClanMemberIds() == null || request.getSelectedClanMemberIds().isEmpty()) {
+            throw new BaseException(ErrorCode.VAL_001, "Turnuvaya katılacak oyuncuları seçmelisiniz.", HttpStatus.BAD_REQUEST, "");
+        }
+
+        int rosterSize = request.getSelectedClanMemberIds().size();
+        if (rosterSize < tournament.getMinTeamSize() || rosterSize > tournament.getMaxTeamSize()) {
+            throw new BaseException(ErrorCode.VAL_001, 
+                    "Seçilen oyuncu sayısı turnuva kurallarına uymuyor. Gereken: Min " + tournament.getMinTeamSize() + ", Max " + tournament.getMaxTeamSize() + ". Seçilen: " + rosterSize, 
+                    HttpStatus.BAD_REQUEST, "");
+        }
+
+        // ÇAKIŞMA KONTROLÜ (Oyuncu başka turnuvada aynı tarihte meşgul mü?)
+        for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
+            boolean isBusy = tournamentApplicationPlayerRepository.isPlayerBusyInDateRange(userIdToSelect, tournament.getStart_date(), tournament.getFinish_date());
+            if (isBusy) {
+                throw new PlayerAlreadyBusyException("Kullanıcı ID " + userIdToSelect + " tarihleri çakışan başka bir turnuvada asil kadroda yer alıyor.");
+            }
+        }
+
         TournamentApplication application = new TournamentApplication();
         application.setTournament(tournament);
         application.setUserId(applicantUserId);
         application.setStatus(TournamentApplicationStatus.PENDING);
-        application.setIsCheckedIn(false); // Başlangıçta check-in false
+        application.setIsCheckedIn(false);
+        application.setClan(clan);
 
-        // ParticipantType'a göre validasyon
-        if (tournament.getParticipantType() == ParticipantType.SOLO) {
-            // SOLO turnuvalar için clan opsiyonel (representation için)
-            if (request.getClanId() != null) {
-                Clan clan = clanRepository.findById(request.getClanId())
-                        .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
+        List<TournamentApplicationPlayer> roster = new ArrayList<>();
 
-                // Kullanıcının bu clan'da olup olmadığını kontrol et
-                clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), applicantUserId)
-                        .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
+        for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
+            ClanMember selectedMember = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), userIdToSelect)
+                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Seçilen oyuncu klanınızda bulunamadı (Kullanıcı ID: " + userIdToSelect + ")", HttpStatus.NOT_FOUND, ""));
 
-                application.setClan(clan);
-            }
-        } else if (tournament.getParticipantType() == ParticipantType.CLAN) {
-            // CLAN turnuvalar için clan zorunlu
-            if (request.getClanId() == null) {
-                throw new BaseException(ErrorCode.APP_002, "Takım turnuvalarında clan seçimi zorunludur", HttpStatus.BAD_REQUEST, "");
-            }
-
-            Clan clan = clanRepository.findById(request.getClanId())
-                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
-
-            if (!clan.getCategory().getId().equals(tournament.getCategory().getId())) {
-                throw new BaseException(ErrorCode.APP_003, "Clan'ın kategorisi turnuva kategorisi ile uyuşmuyor", HttpStatus.BAD_REQUEST, "");
-            }
-
-            // Başvuranın yetkisi
-            ClanMember member = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), applicantUserId)
-                    .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
-
-            if (member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN) {
-                throw new BaseException(ErrorCode.APP_004, "Sadece clan sahibi veya takım kaptanı turnuvaya başvurabilir", HttpStatus.FORBIDDEN, "");
-            }
-
-            application.setClan(clan);
-            
-            // Roster Lock (Kadro Kilidi) - Başvuru anında seçili oyuncuları kopyala
-            List<TournamentApplicationPlayer> roster = new ArrayList<>();
-
-            if (request.getSelectedClanMemberIds() != null && !request.getSelectedClanMemberIds().isEmpty()) {
-                // Seçili oyuncuları kopyala (Frontend'den User ID geliyor olarak varsayıyoruz ve ona göre ClanMember'ı buluyoruz)
-                for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
-                    ClanMember selectedMember = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), userIdToSelect)
-                            .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Seçilen oyuncu klanınızda bulunamadı (Kullanıcı ID: " + userIdToSelect + ")", HttpStatus.NOT_FOUND, ""));
-
-                    TournamentApplicationPlayer player = new TournamentApplicationPlayer();
-                    player.setTournamentApplication(application);
-                    player.setClanMemberId(selectedMember.getId());
-                    player.setUserId(selectedMember.getUserId());
-                    roster.add(player);
-                }
-            } else {
-                // Seçili oyuncu yoksa tüm aktif clan üyelerini kopyala (varsayılan davranış)
-                List<ClanMember> activeMembers = clanMemberRepository.findByClanIdAndIsActiveTrue(request.getClanId());
-                for (ClanMember activeMember : activeMembers) {
-                    TournamentApplicationPlayer player = new TournamentApplicationPlayer();
-                    player.setTournamentApplication(application);
-                    player.setClanMemberId(activeMember.getId());
-                    player.setUserId(activeMember.getUserId());
-                    roster.add(player);
-                }
-            }
-            
-            application.setSelectedPlayers(roster);
+            TournamentApplicationPlayer player = new TournamentApplicationPlayer();
+            player.setTournamentApplication(application);
+            player.setClanMemberId(selectedMember.getId());
+            player.setUserId(selectedMember.getUserId());
+            roster.add(player);
         }
+        
+        application.setSelectedPlayers(roster);
 
         return tournamentApplicationRepository.save(application);
     }
@@ -309,28 +315,96 @@ public class TurnuvaService {
                 .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Başvuru bulunamadı", HttpStatus.NOT_FOUND, ""));
 
         checkOrgPermission(application.getTournament().getOrganizationId());
+        
+        TournamentApplicationStatus oldStatus = application.getStatus();
 
         application.setStatus(request.getStatus());
         application.setRejectionReason(xssSanitizer.sanitizeAndLimit(request.getRejectionReason(), 500));
         application.setReviewedAt(java.time.LocalDateTime.now());
 
-        if (request.getStatus() == TournamentApplicationStatus.APPROVED) {
+        // Yedekten veya bekleyenden asile geçişte kapasite artır/güncelle
+        if (request.getStatus() == TournamentApplicationStatus.APPROVED && oldStatus != TournamentApplicationStatus.APPROVED) {
             Turnuva tournament = application.getTournament();
+            
+            // Eğer kapasite doluysa, kapasiteyi 1 artırır (Dinamik Kapasite Artırımı)
+            if (tournament.getMaxParticipants() != null && tournament.getCurrentParticipantsCount() >= tournament.getMaxParticipants()) {
+                tournament.setMaxParticipants(tournament.getMaxParticipants() + 1);
+            }
+            
             tournament.setCurrentParticipantsCount(tournament.getCurrentParticipantsCount() + 1);
+            turnuvaRepository.save(tournament);
+        } else if (oldStatus == TournamentApplicationStatus.APPROVED && request.getStatus() != TournamentApplicationStatus.APPROVED) {
+            // Asilden düşme
+            Turnuva tournament = application.getTournament();
+            tournament.setCurrentParticipantsCount(tournament.getCurrentParticipantsCount() - 1);
             turnuvaRepository.save(tournament);
         }
 
         return tournamentApplicationRepository.save(application);
     }
 
+    // --- ÖDÜL DAĞITIMI (FINISH) ---
+    @Transactional
+    public void finishTournamentAndDistributeRewards(Long tournamentId, RewardReportRequest reportRequest) {
+        Turnuva turnuva = turnuvaRepository.findById(tournamentId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
+
+        checkOrgPermission(turnuva.getOrganizationId());
+
+        if (!turnuva.getIsActive()) {
+            throw new BaseException(ErrorCode.VAL_001, "Turnuva pasif durumda, ödül dağıtımı yapılamaz.", HttpStatus.BAD_REQUEST, "");
+        }
+
+        BigDecimal totalPrizePool = BigDecimal.valueOf(turnuva.getReward_amount() != null ? turnuva.getReward_amount() : 0.0);
+        BigDecimal reportedTotal = BigDecimal.ZERO;
+
+        for (RewardReportItem item : reportRequest.getRewards()) {
+            reportedTotal = reportedTotal.add(item.getAmount());
+        }
+
+        // Ödül doğrulama
+        if (reportedTotal.compareTo(totalPrizePool) != 0) {
+            throw new BaseException(ErrorCode.VAL_001, "Raporlanan toplam ödül (" + reportedTotal + "), turnuvanın toplam ödül havuzuna (" + totalPrizePool + ") eşit olmalıdır.", HttpStatus.BAD_REQUEST, "");
+        }
+
+        // Bireysel Dağıtım
+        for (RewardReportItem item : reportRequest.getRewards()) {
+            TournamentApplication application = tournamentApplicationRepository.findById(item.getApplicationId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Application bulunamadı: " + item.getApplicationId(), HttpStatus.NOT_FOUND, ""));
+
+            List<TournamentApplicationPlayer> players = application.getSelectedPlayers();
+            if (players == null || players.isEmpty()) continue;
+
+            // Ödülü oyuncu sayısına böl
+            BigDecimal amountPerPlayer = item.getAmount().divide(BigDecimal.valueOf(players.size()), 4, RoundingMode.DOWN);
+
+            for (TournamentApplicationPlayer player : players) {
+                // Sadece Meydan Coin (MC) destekliyoruz (İlerde TRY eklenirse currency check konabilir)
+                walletService.rewardMeydanCoin(
+                        player.getUserId(), 
+                        amountPerPlayer, 
+                        "Turnuva Ödülü: " + turnuva.getTitle() + " (Takım: " + application.getClan().getName() + ")"
+                );
+            }
+        }
+        
+        // Turnuvayı inaktif yap / bitir
+        turnuva.setIsActive(false);
+        turnuvaRepository.save(turnuva);
+        logger.info("Turnuva başarıyla sonlandırıldı ve ödüller dağıtıldı. Turnuva ID: {}", tournamentId);
+    }
+
     public List<TournamentApplication> getTournamentApplications(Long tournamentId) { 
-        // Organizasyon yetkilisi olup olmadığını kontrol edelim
         Turnuva turnuva = turnuvaRepository.findById(tournamentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
         
         checkOrgPermission(turnuva.getOrganizationId());
-        
         return tournamentApplicationRepository.findByTournamentId(tournamentId); 
+    }
+
+    public List<TournamentApplication> getTournamentParticipants(Long tournamentId) {
+        // Herkes görebilir veya sadece adminler görebilir (Herkes görmeli ki takımları görsünler)
+        return tournamentApplicationRepository.findByTournamentIdAndStatus(tournamentId, TournamentApplicationStatus.APPROVED);
     }
 
     public List<TournamentApplication> getUserApplications(Long userId) { return tournamentApplicationRepository.findByUserId(userId); }
@@ -399,7 +473,7 @@ public class TurnuvaService {
         application.setTournament(turnuva);
         application.setUserId(targetUserId);
         application.setStatus(TournamentApplicationStatus.INVITED);
-        application.setIsCheckedIn(false); // Davet edilen de check-in yapmalı
+        application.setIsCheckedIn(false); 
 
         return tournamentApplicationRepository.save(application);
     }
@@ -414,14 +488,14 @@ public class TurnuvaService {
 
         Turnuva turnuva = application.getTournament();
 
-        // 1. Daveti yanıtlayanın yetkisi var mı kontrol et (Davet edilen kişi mi, yoksa org admin mi bypass yapıyor?)
         boolean isInvitee = application.getUserId().equals(targetUserId);
         boolean isOrgAdmin = false;
         
         if (!isInvitee) {
-            // Davet edilen değil, o zaman admin mi diye bak
-            isOrgAdmin = organizationMembershipRepository.existsByOrganizationIdAndUserIdAndRoleIn(
-                    turnuva.getOrganizationId(), targetUserId, Arrays.asList(OrganizationRole.OWNER, OrganizationRole.ADMIN));
+            // Organizasyon kontrolü - Hem eski (ID tabanlı) hem yeni (Organizasyon entity tabanlı) destekler
+            isOrgAdmin = turnuva.getOrganizationId().equals(targetUserId) || 
+                         organizationMembershipRepository.existsByOrganizationIdAndUserIdAndRoleIn(
+                             turnuva.getOrganizationId(), targetUserId, Arrays.asList(OrganizationRole.OWNER, OrganizationRole.ADMIN));
         }
 
         if (!isInvitee && !isOrgAdmin) {
@@ -432,93 +506,75 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.VAL_001, "Geçerli bir davet bulunmuyor veya daha önceden yanıtlanmış.", HttpStatus.BAD_REQUEST, "");
         }
 
-        // 2. Duruma göre işlemler
         if (request.getStatus() == TournamentApplicationStatus.APPROVED) {
-            // Eğer onaylarsa, kapasiteyi kontrol et
             if (turnuva.getMaxParticipants() != null && turnuva.getCurrentParticipantsCount() >= turnuva.getMaxParticipants()) {
                 throw new BaseException(ErrorCode.VAL_001, "Malesef siz daveti kabul edene kadar turnuva kapasitesi doldu. Yedek olarak kaydolmayı deneyebilirsiniz.", HttpStatus.BAD_REQUEST, "");
             }
             
-            // CLAN turnuvasıysa ekstra klan kadro kitleme işlemlerini yap (Apply'daki kural 2)
-            if (turnuva.getParticipantType() == ParticipantType.SOLO) {
-                if (request.getClanId() != null) {
-                    Clan clan = clanRepository.findById(request.getClanId())
-                            .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
-
-                    clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), application.getUserId())
-                            .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
-
-                    application.setClan(clan);
-                }
-            } else if (turnuva.getParticipantType() == ParticipantType.CLAN) {
-                if (request.getClanId() == null) {
-                    throw new BaseException(ErrorCode.APP_002, "Takım turnuvalarında clan seçimi zorunludur", HttpStatus.BAD_REQUEST, "");
-                }
-
-                Clan clan = clanRepository.findById(request.getClanId())
-                        .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
-
-                if (!clan.getCategory().getId().equals(turnuva.getCategory().getId())) {
-                    throw new BaseException(ErrorCode.APP_003, "Clan'ın kategorisi turnuva kategorisi ile uyuşmuyor", HttpStatus.BAD_REQUEST, "");
-                }
-
-                ClanMember member = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), application.getUserId())
-                        .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
-
-                // Admin bypass yapmıyorsa, kabul edenin klan yetkilisi olması lazım
-                if (!isOrgAdmin && member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN) {
-                    throw new BaseException(ErrorCode.APP_004, "Sadece clan sahibi veya takım kaptanı daveti kabul edip takımı turnuvaya sokabilir", HttpStatus.FORBIDDEN, "");
-                }
-
-                application.setClan(clan);
-                
-                List<TournamentApplicationPlayer> roster = new ArrayList<>();
-
-                if (request.getSelectedClanMemberIds() != null && !request.getSelectedClanMemberIds().isEmpty()) {
-                    for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
-                        ClanMember selectedMember = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), userIdToSelect)
-                                .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Seçilen oyuncu klanınızda bulunamadı (Kullanıcı ID: " + userIdToSelect + ")", HttpStatus.NOT_FOUND, ""));
-
-                        TournamentApplicationPlayer player = new TournamentApplicationPlayer();
-                        player.setTournamentApplication(application);
-                        player.setClanMemberId(selectedMember.getId());
-                        player.setUserId(selectedMember.getUserId());
-                        roster.add(player);
-                    }
-                } else {
-                    List<ClanMember> activeMembers = clanMemberRepository.findByClanIdAndIsActiveTrue(request.getClanId());
-                    for (ClanMember activeMember : activeMembers) {
-                        TournamentApplicationPlayer player = new TournamentApplicationPlayer();
-                        player.setTournamentApplication(application);
-                        player.setClanMemberId(activeMember.getId());
-                        player.setUserId(activeMember.getUserId());
-                        roster.add(player);
-                    }
-                }
-                
-                application.setSelectedPlayers(roster);
+            if (request.getClanId() == null) {
+                throw new BaseException(ErrorCode.APP_002, "Daveti kabul etmek için takım (Clan) seçimi zorunludur.", HttpStatus.BAD_REQUEST, "");
             }
 
+            Clan clan = clanRepository.findById(request.getClanId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Clan bulunamadı", HttpStatus.NOT_FOUND, ""));
+
+            if (!clan.getCategory().getId().equals(turnuva.getCategory().getId())) {
+                throw new BaseException(ErrorCode.APP_003, "Clan'ın kategorisi turnuva kategorisi ile uyuşmuyor", HttpStatus.BAD_REQUEST, "");
+            }
+
+            ClanMember member = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), application.getUserId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu clan'ın üyesi değilsiniz", HttpStatus.FORBIDDEN, ""));
+
+            if (!isOrgAdmin && member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN) {
+                throw new BaseException(ErrorCode.APP_004, "Sadece clan sahibi veya takım kaptanı daveti kabul edip takımı turnuvaya sokabilir", HttpStatus.FORBIDDEN, "");
+            }
+
+            application.setClan(clan);
+            
+            List<TournamentApplicationPlayer> roster = new ArrayList<>();
+
+            if (request.getSelectedClanMemberIds() != null && !request.getSelectedClanMemberIds().isEmpty()) {
+                int rosterSize = request.getSelectedClanMemberIds().size();
+                if (rosterSize < turnuva.getMinTeamSize() || rosterSize > turnuva.getMaxTeamSize()) {
+                    throw new BaseException(ErrorCode.VAL_001, 
+                            "Seçilen oyuncu sayısı turnuva kurallarına uymuyor. Gereken: Min " + turnuva.getMinTeamSize() + ", Max " + turnuva.getMaxTeamSize() + ". Seçilen: " + rosterSize, 
+                            HttpStatus.BAD_REQUEST, "");
+                }
+
+                // ÇAKIŞMA KONTROLÜ (Oyuncu başka turnuvada aynı tarihte meşgul mü?)
+                for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
+                    boolean isBusy = tournamentApplicationPlayerRepository.isPlayerBusyInDateRange(userIdToSelect, turnuva.getStart_date(), turnuva.getFinish_date());
+                    if (isBusy) {
+                        throw new PlayerAlreadyBusyException("Kullanıcı ID " + userIdToSelect + " tarihleri çakışan başka bir turnuvada asil kadroda yer alıyor.");
+                    }
+
+                    ClanMember selectedMember = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), userIdToSelect)
+                            .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Seçilen oyuncu klanınızda bulunamadı (Kullanıcı ID: " + userIdToSelect + ")", HttpStatus.NOT_FOUND, ""));
+
+                    TournamentApplicationPlayer player = new TournamentApplicationPlayer();
+                    player.setTournamentApplication(application);
+                    player.setClanMemberId(selectedMember.getId());
+                    player.setUserId(selectedMember.getUserId());
+                    roster.add(player);
+                }
+            } else {
+                throw new BaseException(ErrorCode.VAL_001, "Turnuvaya katılacak oyuncuları seçmelisiniz.", HttpStatus.BAD_REQUEST, "");
+            }
+            
+            application.setSelectedPlayers(roster);
             application.setStatus(TournamentApplicationStatus.APPROVED);
             turnuva.setCurrentParticipantsCount(turnuva.getCurrentParticipantsCount() + 1);
             turnuvaRepository.save(turnuva);
             
         } else if (request.getStatus() == TournamentApplicationStatus.REJECTED || request.getStatus() == TournamentApplicationStatus.SUBSTITUTE) {
-            // Reddetme veya yedek olma durumu
             application.setStatus(request.getStatus());
-            
-            // Sebebi güvenli bir şekilde kaydet (XSS Koruması)
             if (request.getReason() != null) {
                 application.setRejectionReason(xssSanitizer.sanitizeAndLimit(request.getReason(), 500));
             }
-            
         } else {
             throw new BaseException(ErrorCode.VAL_001, "Geçersiz yanıt durumu. Yalnızca APPROVED, REJECTED veya SUBSTITUTE seçilebilir.", HttpStatus.BAD_REQUEST, "");
         }
 
         return tournamentApplicationRepository.save(application);
-    }
-
-    public void applyToTournament(long l, long l1) {
     }
 }

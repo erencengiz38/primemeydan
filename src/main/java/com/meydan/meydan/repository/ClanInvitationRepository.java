@@ -2,6 +2,7 @@ package com.meydan.meydan.repository;
 
 import com.meydan.meydan.models.entities.ClanInvitation;
 import com.meydan.meydan.models.enums.ClanInvitationStatus;
+import com.meydan.meydan.models.enums.ClanInvitationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,4 +17,7 @@ public interface ClanInvitationRepository extends JpaRepository<ClanInvitation, 
     List<ClanInvitation> findByClanIdAndStatus(Long clanId, ClanInvitationStatus status);
 
     List<ClanInvitation> findByUserIdAndStatus(Long userId, ClanInvitationStatus status);
+    
+    // Klana gelen başvuruları listelemek için
+    List<ClanInvitation> findByClanIdAndType(Long clanId, ClanInvitationType type);
 }

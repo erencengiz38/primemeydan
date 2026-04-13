@@ -4,6 +4,7 @@ import com.meydan.meydan.config.CurrentUserId;
 import com.meydan.meydan.dto.ApiResponse;
 import com.meydan.meydan.dto.Turnuva.UpdateApplicationStatusRequestBody;
 import com.meydan.meydan.dto.response.OrganizationMemberResponseDTO;
+import com.meydan.meydan.dto.response.OrganizationQuotaResponseDTO;
 import com.meydan.meydan.dto.response.OrganizationResponseDTO;
 import com.meydan.meydan.models.entities.Organization;
 import com.meydan.meydan.models.entities.OrganizationApplication;
@@ -92,6 +93,16 @@ public class OrganizationController {
         return ResponseEntity.ok(applications);
     }
 
+    @GetMapping("/{organizationId}/applications")
+    @Operation(summary = "Organizasyonun tüm geçmiş/bekleyen başvurularını listele (Yetkili)")
+    public ResponseEntity<List<OrganizationApplication>> getAllApplications(
+            @PathVariable Long organizationId,
+            @CurrentUserId Long requesterId) {
+
+        List<OrganizationApplication> applications = applicationService.getAllApplications(organizationId, requesterId);
+        return ResponseEntity.ok(applications);
+    }
+
     @PutMapping("/applications/{applicationId}/status")
     @Operation(summary = "Organizasyon başvurusunu onayla veya reddet (Yetkili)")
     public ResponseEntity<Void> updateApplicationStatus(
@@ -101,5 +112,26 @@ public class OrganizationController {
 
         applicationService.updateApplicationStatus(applicationId, approverId, request.getStatus());
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{id}/quota")
+    @Operation(summary = "Organizasyonun haftalık kotasını getir")
+    public ResponseEntity<ApiResponse<OrganizationQuotaResponseDTO>> getOrganizationQuota(
+            @PathVariable Long id,
+            @CurrentUserId Long requesterId) {
+
+        OrganizationQuotaResponseDTO dto = organizationService.getOrganizationQuota(id, requesterId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Kota getirildi", dto));
+    }
+
+    @DeleteMapping("/{id}/members/{userId}")
+    @Operation(summary = "Organizasyondan üye/yönetici kov (Sadece OWNER)")
+    public ResponseEntity<ApiResponse<Void>> removeMember(
+            @PathVariable Long id,
+            @PathVariable Long userId,
+            @CurrentUserId Long requesterId) {
+
+        organizationService.removeMember(id, userId, requesterId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Üye başarıyla çıkarıldı", null));
     }
 }

@@ -10,6 +10,7 @@ import com.meydan.meydan.repository.ClanInvitationRepository;
 import com.meydan.meydan.repository.ClanMemberRepository;
 import com.meydan.meydan.repository.ClanRepository;
 import com.meydan.meydan.request.Clan.AddClanRequestBody;
+import com.meydan.meydan.request.Clan.RespondToInvitationRequest;
 import com.meydan.meydan.request.Clan.UpdateClanMemberRoleRequestBody;
 import com.meydan.meydan.util.XssSanitizer;
 import lombok.RequiredArgsConstructor;
@@ -128,15 +129,13 @@ public class ClanService {
             request.setDescription(xssSanitizer.sanitizeAndLimit(request.getDescription(), 1000));
         }
 
-        // --- KRİTİK DÜZELTME BURADA ---
         Clan clan = modelMapper.map(request, Clan.class);
         clan.setId(null);
         clan.setCategory(category);
-        clan.setIsActive(true); // <--- KANKA BUNU UNUTMUŞUZ, KLAN AYAĞA KALKSIN!
+        clan.setIsActive(true);
 
         Clan savedClan = clanRepository.save(clan);
 
-        // Üyeyi eklerken de is_active'in true olduğundan emin ol
         addMemberToClan(savedClan, creatorUserId, ClanMemberRole.OWNER);
 
         return savedClan;
@@ -150,7 +149,6 @@ public class ClanService {
         Clan clan = getClanById(clanId);
         checkPermission(clanId, requesterUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Davet gönderme yetkiniz yok.");
 
-        // GÜNCELLEME: Sadece üyenin değil, klanın da aktifliğini kontrol et
         if (clanMemberRepository.existsActiveMemberInActiveClan(userIdToInvite, clan.getCategory().getId())) {
             throw new BaseException(
                     ErrorCode.VAL_001,
@@ -181,7 +179,6 @@ public class ClanService {
         Long applicantUserId = getCurrentUserId();
         Clan clan = getClanById(clanId);
 
-        // GÜNCELLEME: Sadece üyenin değil, klanın da aktifliğini kontrol et
         if (clanMemberRepository.existsActiveMemberInActiveClan(applicantUserId, clan.getCategory().getId())) {
              throw new BaseException(
                     ErrorCode.VAL_001,
@@ -458,6 +455,12 @@ public class ClanService {
 
     public List<ClanInvitation> getPendingInvitationsForUser(Long userId) {
         return clanInvitationRepository.findByUserIdAndStatus(userId, ClanInvitationStatus.PENDING);
+    }
+
+    public List<ClanInvitation> getClanApplications(Long clanId) {
+        Long requesterUserId = getCurrentUserId();
+        checkPermission(clanId, requesterUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Başvuruları görme yetkiniz yok.");
+        return clanInvitationRepository.findByClanIdAndType(clanId, ClanInvitationType.APPLICATION);
     }
 
 

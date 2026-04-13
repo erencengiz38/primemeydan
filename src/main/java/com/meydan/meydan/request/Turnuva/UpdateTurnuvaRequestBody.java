@@ -40,4 +40,10 @@ public class UpdateTurnuvaRequestBody {
     private Double reward_amount;
     private String reward_currency;
     private String player_format;
+
+    private Integer maxParticipants;
+    private Integer minParticipants;
+    private Integer minTeamSize;
+    private Integer maxTeamSize;
+    private Integer matchCapacity;
 }

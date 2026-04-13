@@ -12,5 +12,7 @@ public interface OrganizationApplicationRepository extends JpaRepository<Organiz
 
     List<OrganizationApplication> findByOrganizationIdAndStatus(Long organizationId, ApplicationStatus status);
 
+    List<OrganizationApplication> findByOrganizationId(Long organizationId);
+
     boolean existsByOrganizationIdAndUserIdAndStatus(Long organizationId, Long userId, ApplicationStatus status);
 }
