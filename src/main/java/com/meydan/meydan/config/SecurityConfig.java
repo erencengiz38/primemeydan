@@ -31,7 +31,10 @@ public class SecurityConfig {
                         // KANKA 2: ASIL ÇÖZÜM BURASI! "/auth/**" yerine "/api/auth/**" yaptık.
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/turnuva/list").permitAll()
+                        // Turnuva ve Klan listelemeleri herkese açık (Public) yapıldı
+                        .requestMatchers("/api/turnuva/list", "/api/turnuva/list/paginated").permitAll()
+                        .requestMatchers("/api/clan/list", "/api/clan/list/paginated", "/api/clan/{clanId}").permitAll()
+                        // Diğer genel public izinler
                         .requestMatchers("/api/auth/**", "/api/organizations/**", "/api/tournaments/**", "/api/teams/**", "/api/categories/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
