@@ -1,6 +1,5 @@
 package com.meydan.meydan.controller;
 
-import com.meydan.meydan.config.CurrentUserId;
 import com.meydan.meydan.dto.ApiResponse;
 import com.meydan.meydan.dto.response.WalletResponseDTO;
 import com.meydan.meydan.dto.response.WalletTransactionResponseDTO;
@@ -12,6 +11,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,9 +29,15 @@ public class WalletController {
     private final WalletService walletService;
     private final ModelMapper modelMapper;
 
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return Long.parseLong(authentication.getName());
+    }
+
     @GetMapping("/me")
     @Operation(summary = "Cüzdanımı Getir", description = "Kullanıcının güncel TL ve Meydan Coin bakiyesini döner.")
-    public ResponseEntity<ApiResponse<WalletResponseDTO>> getMyWallet(@CurrentUserId Long userId) {
+    public ResponseEntity<ApiResponse<WalletResponseDTO>> getMyWallet() {
+        Long userId = getCurrentUserId();
         Wallet wallet = walletService.getOrCreateWallet(userId);
         WalletResponseDTO responseDTO = modelMapper.map(wallet, WalletResponseDTO.class);
         return ResponseEntity.ok(new ApiResponse<>(true, "Cüzdan bilgileri getirildi", responseDTO));
@@ -38,7 +45,8 @@ public class WalletController {
 
     @GetMapping("/transactions")
     @Operation(summary = "Hesap Hareketlerini Getir", description = "Kullanıcının cüzdanında gerçekleşen tüm harcama, kazanma ve yükleme geçmişini döner.")
-    public ResponseEntity<ApiResponse<List<WalletTransactionResponseDTO>>> getMyTransactions(@CurrentUserId Long userId) {
+    public ResponseEntity<ApiResponse<List<WalletTransactionResponseDTO>>> getMyTransactions() {
+        Long userId = getCurrentUserId();
         List<WalletTransaction> transactions = walletService.getWalletTransactions(userId);
         
         List<WalletTransactionResponseDTO> responseDTOs = transactions.stream()

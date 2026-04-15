@@ -1,6 +1,5 @@
 package com.meydan.meydan.controller;
 
-import com.meydan.meydan.config.CurrentUserId;
 import com.meydan.meydan.dto.ApiResponse;
 import com.meydan.meydan.dto.Turnuva.UpdateApplicationStatusRequestBody;
 import com.meydan.meydan.dto.response.OrganizationMemberResponseDTO;
@@ -13,11 +12,12 @@ import com.meydan.meydan.request.Organization.CreateOrganizationRequestBody;
 import com.meydan.meydan.service.OrganizationApplicationService;
 import com.meydan.meydan.service.OrganizationService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,6 +32,11 @@ public class OrganizationController {
     private final OrganizationService organizationService;
     private final OrganizationApplicationService applicationService;
     private final ModelMapper modelMapper;
+
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return Long.parseLong(authentication.getName());
+    }
 
     private OrganizationMemberResponseDTO mapToOrganizationMemberDTO(OrganizationMembership member) {
         OrganizationMemberResponseDTO dto = new OrganizationMemberResponseDTO();
@@ -64,10 +69,8 @@ public class OrganizationController {
 
     @PostMapping("/create")
     @Operation(summary = "Yeni organizasyon oluştur")
-    public ResponseEntity<Long> createOrganization(
-            @RequestBody CreateOrganizationRequestBody request,
-            @Parameter(hidden = true) @CurrentUserId Long creatorId) {
-
+    public ResponseEntity<Long> createOrganization(@RequestBody CreateOrganizationRequestBody request) {
+        Long creatorId = getCurrentUserId();
         Long newOrgId = organizationService.createOrganization(request, creatorId);
         return ResponseEntity.ok(newOrgId);
     }
@@ -76,29 +79,24 @@ public class OrganizationController {
     @Operation(summary = "Organizasyona katılmak için başvur")
     public ResponseEntity<Void> applyToOrganization(
             @RequestParam Long organizationId,
-            @RequestBody String message,
-            @CurrentUserId Long userId) {
-
+            @RequestBody String message) {
+        Long userId = getCurrentUserId();
         applicationService.applyToOrganization(organizationId, userId, message);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{organizationId}/applications/pending")
     @Operation(summary = "Organizasyonun bekleyen başvurularını listele (Yetkili)")
-    public ResponseEntity<List<OrganizationApplication>> getPendingApplications(
-            @PathVariable Long organizationId,
-            @CurrentUserId Long requesterId) {
-
+    public ResponseEntity<List<OrganizationApplication>> getPendingApplications(@PathVariable Long organizationId) {
+        Long requesterId = getCurrentUserId();
         List<OrganizationApplication> applications = applicationService.getPendingApplications(organizationId, requesterId);
         return ResponseEntity.ok(applications);
     }
 
     @GetMapping("/{organizationId}/applications")
     @Operation(summary = "Organizasyonun tüm geçmiş/bekleyen başvurularını listele (Yetkili)")
-    public ResponseEntity<List<OrganizationApplication>> getAllApplications(
-            @PathVariable Long organizationId,
-            @CurrentUserId Long requesterId) {
-
+    public ResponseEntity<List<OrganizationApplication>> getAllApplications(@PathVariable Long organizationId) {
+        Long requesterId = getCurrentUserId();
         List<OrganizationApplication> applications = applicationService.getAllApplications(organizationId, requesterId);
         return ResponseEntity.ok(applications);
     }
@@ -107,19 +105,16 @@ public class OrganizationController {
     @Operation(summary = "Organizasyon başvurusunu onayla veya reddet (Yetkili)")
     public ResponseEntity<Void> updateApplicationStatus(
             @PathVariable Long applicationId,
-            @RequestBody UpdateApplicationStatusRequestBody request,
-            @CurrentUserId Long approverId) {
-
+            @RequestBody UpdateApplicationStatusRequestBody request) {
+        Long approverId = getCurrentUserId();
         applicationService.updateApplicationStatus(applicationId, approverId, request.getStatus());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/quota")
     @Operation(summary = "Organizasyonun haftalık kotasını getir")
-    public ResponseEntity<ApiResponse<OrganizationQuotaResponseDTO>> getOrganizationQuota(
-            @PathVariable Long id,
-            @CurrentUserId Long requesterId) {
-
+    public ResponseEntity<ApiResponse<OrganizationQuotaResponseDTO>> getOrganizationQuota(@PathVariable Long id) {
+        Long requesterId = getCurrentUserId();
         OrganizationQuotaResponseDTO dto = organizationService.getOrganizationQuota(id, requesterId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Kota getirildi", dto));
     }
@@ -128,9 +123,8 @@ public class OrganizationController {
     @Operation(summary = "Organizasyondan üye/yönetici kov (Sadece OWNER)")
     public ResponseEntity<ApiResponse<Void>> removeMember(
             @PathVariable Long id,
-            @PathVariable Long userId,
-            @CurrentUserId Long requesterId) {
-
+            @PathVariable Long userId) {
+        Long requesterId = getCurrentUserId();
         organizationService.removeMember(id, userId, requesterId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Üye başarıyla çıkarıldı", null));
     }

@@ -132,6 +132,13 @@ public class TurnuvaController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuvalar getirildi", dtoPage));
     }
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Turnuva detaylarını getir (ID ile)")
+    public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> getTurnuvaById(@PathVariable Long id) {
+        Turnuva turnuva = turnuvaService.getTurnuvaById(id);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva detayları getirildi", mapToTurnuvaDTO(turnuva)));
+    }
+
     @GetMapping("/organization/{organizationId}")
     @Operation(summary = "Organizasyon turnuvalarını listele")
     public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getTurnuvasByOrganization(@PathVariable Long organizationId) {

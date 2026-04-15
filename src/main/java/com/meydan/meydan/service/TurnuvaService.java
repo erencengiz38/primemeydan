@@ -153,6 +153,11 @@ public class TurnuvaService {
     public List<Turnuva> getTurnuvasByOrganizationId(Long orgId) { return turnuvaRepository.findByOrganizationId(orgId); }
     public Page<Turnuva> getTurnuvasByOrganizationIdWithPagination(Long orgId, Pageable pageable) { return turnuvaRepository.findByOrganizationId(orgId, pageable); }
 
+    public Turnuva getTurnuvaById(Long id) {
+        return turnuvaRepository.findById(id)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
+    }
+
     @Transactional
     public Turnuva updateTurnuva(UpdateTurnuvaRequestBody request, Long organizationId) {
         checkOrgPermission(organizationId);
@@ -271,8 +276,8 @@ public class TurnuvaService {
 
         int rosterSize = request.getSelectedClanMemberIds().size();
         if (rosterSize < tournament.getMinTeamSize() || rosterSize > tournament.getMaxTeamSize()) {
-            throw new BaseException(ErrorCode.VAL_001, 
-                    "Seçilen oyuncu sayısı turnuva kurallarına uymuyor. Gereken: Min " + tournament.getMinTeamSize() + ", Max " + tournament.getMaxTeamSize() + ". Seçilen: " + rosterSize, 
+            throw new BaseException(ErrorCode.VAL_001,
+                    "Seçilen oyuncu sayısı turnuva kurallarına uymuyor. Gereken: Min " + tournament.getMinTeamSize() + ", Max " + tournament.getMaxTeamSize() + ". Seçilen: " + rosterSize,
                     HttpStatus.BAD_REQUEST, "");
         }
 
@@ -303,7 +308,7 @@ public class TurnuvaService {
             player.setUserId(selectedMember.getUserId());
             roster.add(player);
         }
-        
+
         application.setSelectedPlayers(roster);
 
         return tournamentApplicationRepository.save(application);

@@ -1,7 +1,5 @@
 package com.meydan.meydan.security;
 
-import com.meydan.meydan.models.entities.User;
-import com.meydan.meydan.repository.UserRepository;
 import com.meydan.meydan.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -10,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -20,11 +19,9 @@ import java.util.List;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
 
-    public JwtAuthFilter(JwtService jwtService, UserRepository userRepository) {
+    public JwtAuthFilter(JwtService jwtService) {
         this.jwtService = jwtService;
-        this.userRepository = userRepository;
     }
 
     @Override
@@ -40,22 +37,31 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(7);
-        String mail = jwtService.extractMail(token);
+        String mail;
+
+        try {
+            mail = jwtService.extractMail(token);
+        } catch (Exception e) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         if (mail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            User user = userRepository.findByMail(mail).orElse(null);
+            if (jwtService.isTokenValid(token, mail)) {
 
-            if (user != null && jwtService.isTokenValid(token, user.getMail())) {
-                // BURAYI DEĞİŞTİRDİK:
-                // İlk parametreye user.getMail() yerine user.getId().toString() veriyoruz.
-                // Artık sistemin her yerinde principal.getName() dediğinde direkt sayı (ID) dönecek.
+                // Artık user.getTag() değil, direkt token içindeki güvenli rolü alıyoruz.
+                // Veritabanına istek atmadan ID'yi Principal yapıyoruz.
+                String role = jwtService.extractRole(token);
+                String userId = jwtService.extractId(token);
+
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
-                                user.getId().toString(), // ARTIK BURASI ID!
+                                userId, // Principal her yerde ID dönecek
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + user.getTag()))
+                                List.of(new SimpleGrantedAuthority("ROLE_" + role))
                         );
 
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }

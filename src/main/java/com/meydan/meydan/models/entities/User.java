@@ -1,5 +1,6 @@
 package com.meydan.meydan.models.entities;
 
+import com.meydan.meydan.models.enums.Role;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,4 +26,7 @@ public class User {
     private String mail;
     private String password;
     private String tag;
+
+    @Enumerated(EnumType.STRING)
+    private Role role = Role.USER;
 }

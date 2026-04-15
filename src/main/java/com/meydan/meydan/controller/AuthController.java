@@ -1,6 +1,5 @@
 package com.meydan.meydan.controller;
 
-
 import com.meydan.meydan.dto.Auth.AuthResponse;
 import com.meydan.meydan.request.Auth.LoginRequest;
 import com.meydan.meydan.request.Auth.RegisterRequest;
@@ -27,7 +26,6 @@ public class AuthController {
 
     @PostMapping("/login")
     public AuthResponse login(@RequestBody LoginRequest req) {
-
         return authService.login(req);
     }
 }

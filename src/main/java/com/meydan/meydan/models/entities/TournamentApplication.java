@@ -23,12 +23,12 @@ public class TournamentApplication {
     private Turnuva tournament;
 
     @Column(name = "user_id", nullable = false)
-    private Long userId; // Applicant/Solo Player
+    private Long userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "clan_id")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // Sonsuz döngüyü ve gereksiz detayı engellemek için
-    private Clan clan; // Nullable - for representing a clan in 1v1 or for Team apps
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Clan clan;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
