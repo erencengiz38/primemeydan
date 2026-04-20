@@ -1,11 +1,11 @@
 package com.meydan.meydan.controller;
 
-import com.meydan.meydan.config.CurrentUserId;
 import com.meydan.meydan.dto.ApiResponse;
 import com.meydan.meydan.dto.response.TournamentApplicationResponseDTO;
 import com.meydan.meydan.dto.response.TurnuvaResponseDTO;
 import com.meydan.meydan.models.entities.TournamentApplication;
 import com.meydan.meydan.models.entities.Turnuva;
+import com.meydan.meydan.request.AdminReviewRequest; // Admin notları için
 import com.meydan.meydan.request.Turnuva.AddTurnuvaRequestBody;
 import com.meydan.meydan.request.Turnuva.ApplyToTournamentRequestBody;
 import com.meydan.meydan.request.Turnuva.UpdateApplicationStatusRequestBody;
@@ -23,6 +23,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
@@ -37,6 +40,11 @@ public class TurnuvaController {
 
     private final TurnuvaService turnuvaService;
     private final ModelMapper modelMapper; // DTO dönüşümleri için eklendi
+
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return Long.parseLong(authentication.getName());
+    }
 
     // --- Helper Methods for DTO Mapping ---
     private TurnuvaResponseDTO mapToTurnuvaDTO(Turnuva turnuva) {
@@ -64,14 +72,14 @@ public class TurnuvaController {
     // --- 1. TEMEL CRUD İŞLEMLERİ ---
 
     @PostMapping("/{organizationId}/create")
-    @Operation(summary = "Yeni turnuva oluştur")
+    @Operation(summary = "Yeni turnuva oluştur", description = "Oluşturulan turnuva admin onayına (PENDING) düşer.")
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> createTurnuva(
             @PathVariable Long organizationId,
             @Valid @RequestBody AddTurnuvaRequestBody request) {
 
         Turnuva turnuva = turnuvaService.createTurnuva(request, organizationId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ApiResponse<>(true, "Turnuva başarıyla oluşturuldu", mapToTurnuvaDTO(turnuva)));
+                .body(new ApiResponse<>(true, "Turnuva başarıyla oluşturuldu ve admin onayına gönderildi.", mapToTurnuvaDTO(turnuva)));
     }
 
     @PutMapping("/{organizationId}/update")
@@ -95,13 +103,13 @@ public class TurnuvaController {
     }
 
     @PostMapping("/{id}/{organizationId}/restore")
-    @Operation(summary = "Turnuvayı geri yükle")
+    @Operation(summary = "Turnuvayı geri yükle", description = "Geri yüklenen turnuva tekrar admin onayına düşer.")
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> restoreTurnuva(
             @PathVariable Long id,
             @PathVariable Long organizationId) {
 
         Turnuva restoredTurnuva = turnuvaService.restoreTurnuva(id, organizationId);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva geri yüklendi", mapToTurnuvaDTO(restoredTurnuva)));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva geri yüklendi ve admin onayına gönderildi.", mapToTurnuvaDTO(restoredTurnuva)));
     }
 
     @DeleteMapping("/{id}/{organizationId}/permanent")
@@ -117,7 +125,7 @@ public class TurnuvaController {
     // --- 2. LİSTELEME İŞLEMLERİ ---
 
     @GetMapping("/list")
-    @Operation(summary = "Tüm turnuvaları listele")
+    @Operation(summary = "Tüm ONAYLANMIŞ turnuvaları listele (Herkese Açık)")
     public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getAllTurnuvas() {
         List<TurnuvaResponseDTO> dtoList = turnuvaService.getAllTurnuvas().stream()
                 .map(this::mapToTurnuvaDTO).collect(Collectors.toList());
@@ -125,7 +133,7 @@ public class TurnuvaController {
     }
 
     @GetMapping("/list/paginated")
-    @Operation(summary = "Turnuvaları sayfalı listele")
+    @Operation(summary = "ONAYLANMIŞ turnuvaları sayfalı listele (Herkese Açık)")
     public ResponseEntity<ApiResponse<Page<TurnuvaResponseDTO>>> getAllTurnuvasWithPagination(Pageable pageable) {
         Page<TurnuvaResponseDTO> dtoPage = turnuvaService.getAllTurnuvasWithPagination(pageable)
                 .map(this::mapToTurnuvaDTO);
@@ -140,7 +148,7 @@ public class TurnuvaController {
     }
 
     @GetMapping("/organization/{organizationId}")
-    @Operation(summary = "Organizasyon turnuvalarını listele")
+    @Operation(summary = "Organizasyon turnuvalarını listele (O organizasyona ait hepsi)")
     public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getTurnuvasByOrganization(@PathVariable Long organizationId) {
         List<TurnuvaResponseDTO> dtoList = turnuvaService.getTurnuvasByOrganizationId(organizationId).stream()
                 .map(this::mapToTurnuvaDTO).collect(Collectors.toList());
@@ -157,7 +165,8 @@ public class TurnuvaController {
 
     @GetMapping("/my")
     @Operation(summary = "Kendi organizasyonumun turnuvalarını listele")
-    public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getMyTurnuvas(@CurrentUserId Long organizationId) {
+    public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getMyTurnuvas() {
+        Long organizationId = getCurrentUserId();
         List<TurnuvaResponseDTO> dtoList = turnuvaService.getTurnuvasByOrganizationId(organizationId).stream()
                 .map(this::mapToTurnuvaDTO).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Kendi turnuvalarınız getirildi", dtoList));
@@ -165,10 +174,45 @@ public class TurnuvaController {
 
     @GetMapping("/my/paginated")
     @Operation(summary = "Kendi organizasyonumun turnuvalarını sayfalı listele")
-    public ResponseEntity<ApiResponse<Page<TurnuvaResponseDTO>>> getMyTurnuvasWithPagination(@CurrentUserId Long organizationId, Pageable pageable) {
+    public ResponseEntity<ApiResponse<Page<TurnuvaResponseDTO>>> getMyTurnuvasWithPagination(Pageable pageable) {
+        Long organizationId = getCurrentUserId();
         Page<TurnuvaResponseDTO> dtoPage = turnuvaService.getTurnuvasByOrganizationIdWithPagination(organizationId, pageable)
                 .map(this::mapToTurnuvaDTO);
         return ResponseEntity.ok(new ApiResponse<>(true, "Kendi turnuvalarınız getirildi", dtoPage));
+    }
+
+    // --- ADMİN ONAY İŞLEMLERİ ---
+
+    @GetMapping("/admin/pending")
+    @Operation(summary = "Onay bekleyen turnuvaları listele (Sadece Admin)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getPendingTurnuvas() {
+        List<TurnuvaResponseDTO> dtoList = turnuvaService.getPendingTurnuvas().stream()
+                .map(this::mapToTurnuvaDTO).collect(Collectors.toList());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Onay bekleyen turnuvalar getirildi", dtoList));
+    }
+
+    @PostMapping("/admin/{turnuvaId}/approve")
+    @Operation(summary = "Turnuvayı onayla (Sadece Admin)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> approveTurnuva(
+            @PathVariable Long turnuvaId,
+            @RequestBody(required = false) AdminReviewRequest request) {
+        
+        String notes = request != null ? request.getAdminNotes() : null;
+        Turnuva turnuva = turnuvaService.approveTurnuva(turnuvaId, notes);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva onaylandı ve yayına alındı", mapToTurnuvaDTO(turnuva)));
+    }
+
+    @PostMapping("/admin/{turnuvaId}/reject")
+    @Operation(summary = "Turnuvayı reddet (Sadece Admin)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> rejectTurnuva(
+            @PathVariable Long turnuvaId,
+            @RequestBody AdminReviewRequest request) {
+        
+        Turnuva turnuva = turnuvaService.rejectTurnuva(turnuvaId, request.getAdminNotes());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva reddedildi", mapToTurnuvaDTO(turnuva)));
     }
 
     // --- 3. BAŞVURU VE YÖNETİM İŞLEMLERİ ---
@@ -211,7 +255,8 @@ public class TurnuvaController {
 
     @GetMapping("/my/applications")
     @Operation(summary = "Kendi başvurularımı listele")
-    public ResponseEntity<ApiResponse<List<TournamentApplicationResponseDTO>>> getMyApplications(@CurrentUserId Long userId) {
+    public ResponseEntity<ApiResponse<List<TournamentApplicationResponseDTO>>> getMyApplications() {
+        Long userId = getCurrentUserId();
         List<TournamentApplicationResponseDTO> dtoList = turnuvaService.getUserApplications(userId).stream()
                 .map(this::mapToApplicationDTO).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Başvurularınız getirildi", dtoList));

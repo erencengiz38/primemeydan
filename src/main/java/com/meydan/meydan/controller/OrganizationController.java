@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -68,7 +69,8 @@ public class OrganizationController {
     }
 
     @PostMapping("/create")
-    @Operation(summary = "Yeni organizasyon oluştur")
+    @Operation(summary = "Yeni organizasyon oluştur", description = "Sadece ADMIN yetkisi olanlar kullanabilir. Normal kullanıcılar başvuru yapmalıdır.")
+    @PreAuthorize("hasRole('ADMIN')") // Adım 1: Anında Kurulum Kapatıldı
     public ResponseEntity<Long> createOrganization(@RequestBody CreateOrganizationRequestBody request) {
         Long creatorId = getCurrentUserId();
         Long newOrgId = organizationService.createOrganization(request, creatorId);

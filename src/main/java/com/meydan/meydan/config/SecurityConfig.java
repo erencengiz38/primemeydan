@@ -37,7 +37,7 @@ public class SecurityConfig {
                         // Public GET Endpoints
                         .requestMatchers(HttpMethod.GET, "/api/turnuva/list", "/api/turnuva/list/paginated", "/api/turnuva/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/clan/list", "/api/clan/list/paginated", "/api/clan/{clanId}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/organizations/**", "/api/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/organizations/**", "/api/category/**").permitAll()
 
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()

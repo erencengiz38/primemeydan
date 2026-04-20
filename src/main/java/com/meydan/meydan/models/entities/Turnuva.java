@@ -1,5 +1,6 @@
 package com.meydan.meydan.models.entities;
 
+import com.meydan.meydan.models.enums.ApplicationStatus;
 import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -41,6 +42,14 @@ public class Turnuva extends BaseEntity {
     private Category category;
 
     private Boolean isActive = true;
+
+    // --- YENİ EKLENEN ONAY ALANLARI ---
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status")
+    private ApplicationStatus approvalStatus = ApplicationStatus.PENDING;
+
+    @Column(name = "admin_notes", length = 1000)
+    private String adminNotes;
 
     // --- YENİ EKLENEN ESNEK MOTOR ALANLARI ---
     @Column(name = "max_participants")

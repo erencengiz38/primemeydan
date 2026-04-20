@@ -1,5 +1,6 @@
 package com.meydan.meydan.dto.response;
 
+import com.meydan.meydan.models.enums.ApplicationStatus;
 import lombok.Data;
 import java.util.Date;
 import java.util.UUID;
@@ -30,4 +31,6 @@ public class TurnuvaResponseDTO {
     private Integer maxTeamSize;
     private Integer matchCapacity;
     private Integer currentParticipantsCount;
+    private ApplicationStatus approvalStatus;
+    private String adminNotes;
 }

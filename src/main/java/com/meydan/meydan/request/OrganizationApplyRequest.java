@@ -6,6 +6,8 @@ import lombok.Data;
 public class OrganizationApplyRequest {
     private String organizationName;
     private String description;
+    private Long categoryId;
+    private String logoUrl;
     private Boolean hasPreviousExperience;
     private String previousExperienceDetails;
     private String managementPlan;

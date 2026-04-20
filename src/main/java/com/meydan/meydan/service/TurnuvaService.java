@@ -41,14 +41,13 @@ public class TurnuvaService {
     private final TournamentApplicationRepository tournamentApplicationRepository;
     private final TournamentApplicationPlayerRepository tournamentApplicationPlayerRepository;
     private final OrganizationMembershipRepository organizationMembershipRepository;
-    private final OrganizationQuotaRepository organizationQuotaRepository; // KOTA
+    private final OrganizationQuotaRepository organizationQuotaRepository; 
     private final TournamentStageRepository tournamentStageRepository;
-    private final WalletService walletService; // CÜZDAN VE ÖDÜL İÇİN EKLENDİ
+    private final WalletService walletService; 
     private final ModelMapper modelMapper;
     private final XssSanitizer xssSanitizer;
     private final SocialMediaValidator socialMediaValidator;
 
-    // --- HELPER: GET CURRENT USER ID ---
     private Long getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -63,7 +62,6 @@ public class TurnuvaService {
         }
     }
 
-    // --- ORTAK BOLA (YETKİ) KONTROLÜ METODU ---
     private void checkOrgPermission(Long organizationId) {
         Long userId = getCurrentUserId();
         
@@ -92,7 +90,6 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.VAL_001, "Geçersiz takım boyutu. MinTeamSize ve MaxTeamSize değerlerini doğru giriniz.", HttpStatus.BAD_REQUEST, "");
         }
 
-        // KOTA KONTROLÜ (WEEKLY QUOTA)
         OrganizationQuota quota = organizationQuotaRepository.findById(organizationId)
                 .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Organizasyon kotası bulunamadı. Lütfen organizasyon ayarlarını kontrol edin.", HttpStatus.BAD_REQUEST, "OrgId: " + organizationId));
 
@@ -103,7 +100,6 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.VAL_001, "Organizasyon haftalık ödül kotanız aşıldı! Kalan Kotanız: " + availableQuota + " MC", HttpStatus.BAD_REQUEST, "Requested: " + rewardAmount);
         }
 
-        // Kotayı güncelle
         quota.setCurrentSpent(quota.getCurrentSpent().add(rewardAmount));
         organizationQuotaRepository.save(quota);
 
@@ -114,7 +110,7 @@ public class TurnuvaService {
         turnuva.setFinish_date(request.getFinish_date());
         turnuva.setImageUrl(request.getImageUrl());
         turnuva.setReward_amount(request.getReward_amount());
-        turnuva.setReward_currency(request.getReward_currency() != null ? request.getReward_currency() : "MEYDAN_COIN"); // Default MC
+        turnuva.setReward_currency(request.getReward_currency() != null ? request.getReward_currency() : "MEYDAN_COIN"); 
         turnuva.setPlayer_format(request.getPlayer_format());
         turnuva.setTournamentFormat(request.getTournamentFormat());
         turnuva.setRegistrationDeadline(request.getRegistrationDeadline());
@@ -128,7 +124,9 @@ public class TurnuvaService {
         turnuva.setId(null);
         turnuva.setCategory(category);
         turnuva.setOrganizationId(organizationId);
+        
         turnuva.setIsActive(true);
+        turnuva.setApprovalStatus(ApplicationStatus.PENDING);
 
         if (turnuva.getTitle() != null) turnuva.setTitle(xssSanitizer.sanitizeAndLimit(turnuva.getTitle(), 200));
         if (turnuva.getDescription() != null) turnuva.setDescription(xssSanitizer.sanitizeAndLimit(turnuva.getDescription(), 1000));
@@ -148,14 +146,61 @@ public class TurnuvaService {
         return savedTurnuva;
     }
 
-    public List<Turnuva> getAllTurnuvas() { return turnuvaRepository.findAll(); }
-    public Page<Turnuva> getAllTurnuvasWithPagination(Pageable pageable) { return turnuvaRepository.findAll(pageable); }
+    public List<Turnuva> getAllTurnuvas() { 
+        return turnuvaRepository.findByApprovalStatusAndIsActiveTrue(ApplicationStatus.APPROVED); 
+    }
+    
+    public Page<Turnuva> getAllTurnuvasWithPagination(Pageable pageable) { 
+        return turnuvaRepository.findByApprovalStatusAndIsActiveTrue(ApplicationStatus.APPROVED, pageable); 
+    }
+    
     public List<Turnuva> getTurnuvasByOrganizationId(Long orgId) { return turnuvaRepository.findByOrganizationId(orgId); }
     public Page<Turnuva> getTurnuvasByOrganizationIdWithPagination(Long orgId, Pageable pageable) { return turnuvaRepository.findByOrganizationId(orgId, pageable); }
 
     public Turnuva getTurnuvaById(Long id) {
         return turnuvaRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
+    }
+
+    public List<Turnuva> getPendingTurnuvas() {
+        return turnuvaRepository.findByApprovalStatusAndIsActiveTrue(ApplicationStatus.PENDING);
+    }
+    
+    @Transactional
+    public Turnuva approveTurnuva(Long turnuvaId, String adminNotes) {
+        Turnuva turnuva = getTurnuvaById(turnuvaId);
+        
+        if (turnuva.getApprovalStatus() != ApplicationStatus.PENDING) {
+            throw new BaseException(ErrorCode.VAL_001, "Bu turnuva zaten değerlendirilmiş.", HttpStatus.BAD_REQUEST, "");
+        }
+        
+        turnuva.setApprovalStatus(ApplicationStatus.APPROVED);
+        turnuva.setAdminNotes(adminNotes);
+        return turnuvaRepository.save(turnuva);
+    }
+    
+    @Transactional
+    public Turnuva rejectTurnuva(Long turnuvaId, String adminNotes) {
+        Turnuva turnuva = getTurnuvaById(turnuvaId);
+        
+        if (turnuva.getApprovalStatus() != ApplicationStatus.PENDING) {
+            throw new BaseException(ErrorCode.VAL_001, "Bu turnuva zaten değerlendirilmiş.", HttpStatus.BAD_REQUEST, "");
+        }
+        
+        turnuva.setApprovalStatus(ApplicationStatus.REJECTED);
+        turnuva.setAdminNotes(adminNotes);
+        turnuva.setIsActive(false); 
+        
+        OrganizationQuota quota = organizationQuotaRepository.findById(turnuva.getOrganizationId())
+                .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Kota bulunamadı", HttpStatus.NOT_FOUND, ""));
+        
+        BigDecimal rewardAmount = BigDecimal.valueOf(turnuva.getReward_amount() != null ? turnuva.getReward_amount() : 0.0);
+        
+        // Güvenli iade: Asla eksiye düşmez (0'da durur)
+        quota.setCurrentSpent(quota.getCurrentSpent().subtract(rewardAmount).max(BigDecimal.ZERO));
+        organizationQuotaRepository.save(quota);
+        
+        return turnuvaRepository.save(turnuva);
     }
 
     @Transactional
@@ -193,18 +238,15 @@ public class TurnuvaService {
         checkOrgPermission(organizationId);
         Turnuva turnuva = turnuvaRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
         
-        // Turnuva iptal ediliyorsa kotayı iade et
-        if (turnuva.getIsActive()) {
+        if (turnuva.getIsActive() && turnuva.getApprovalStatus() != ApplicationStatus.REJECTED) {
             OrganizationQuota quota = organizationQuotaRepository.findById(turnuva.getOrganizationId())
                     .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Kota bulunamadı", HttpStatus.NOT_FOUND, ""));
             
             BigDecimal rewardAmount = BigDecimal.valueOf(turnuva.getReward_amount() != null ? turnuva.getReward_amount() : 0.0);
             
-            // Eğer harcanan miktar iade miktarından büyük veya eşitse iade et (Eksiye düşmesini engelle)
-            if (quota.getCurrentSpent().compareTo(rewardAmount) >= 0) {
-                quota.setCurrentSpent(quota.getCurrentSpent().subtract(rewardAmount));
-                organizationQuotaRepository.save(quota);
-            }
+            // Güvenli iade: Asla eksiye düşmez
+            quota.setCurrentSpent(quota.getCurrentSpent().subtract(rewardAmount).max(BigDecimal.ZERO));
+            organizationQuotaRepository.save(quota);
         }
         
         turnuva.setIsActive(false);
@@ -216,7 +258,21 @@ public class TurnuvaService {
         checkOrgPermission(organizationId);
         Turnuva turnuva = turnuvaRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
         turnuva.setIsActive(true);
-        // Not: İptal edildiğinde iade edilen kota, tekrar restore edilince yeniden düşülebilir ama karmaşıklık yaratmaması için şimdilik admin onayı beklenir.
+        turnuva.setApprovalStatus(ApplicationStatus.PENDING);
+        
+        OrganizationQuota quota = organizationQuotaRepository.findById(turnuva.getOrganizationId())
+                .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Kota bulunamadı", HttpStatus.NOT_FOUND, ""));
+                
+        BigDecimal rewardAmount = BigDecimal.valueOf(turnuva.getReward_amount() != null ? turnuva.getReward_amount() : 0.0);
+        BigDecimal availableQuota = quota.getWeeklyLimit().subtract(quota.getCurrentSpent());
+
+        if (rewardAmount.compareTo(availableQuota) > 0) {
+            throw new BaseException(ErrorCode.VAL_001, "Organizasyon haftalık ödül kotanız aşıldı! Restorasyon başarısız.", HttpStatus.BAD_REQUEST, "Requested: " + rewardAmount);
+        }
+
+        quota.setCurrentSpent(quota.getCurrentSpent().add(rewardAmount));
+        organizationQuotaRepository.save(quota);
+        
         return turnuvaRepository.save(turnuva);
     }
 
@@ -228,7 +284,6 @@ public class TurnuvaService {
         return turnuva;
     }
 
-    // --- BAŞVURU MANTIKLARI ---
     @Transactional
     public TournamentApplication applyToTournament(ApplyToTournamentRequestBody request) {
         Long applicantUserId = getCurrentUserId();
@@ -236,8 +291,8 @@ public class TurnuvaService {
         Turnuva tournament = turnuvaRepository.findById(request.getTournamentId())
                 .orElseThrow(() -> new BaseException(ErrorCode.TRN_001, "Turnuva bulunamadı", HttpStatus.NOT_FOUND, ""));
 
-        if (!tournament.getIsActive()) {
-            throw new BaseException(ErrorCode.VAL_001, "Bu turnuva aktif değil veya iptal edilmiş.", HttpStatus.BAD_REQUEST, "");
+        if (tournament.getApprovalStatus() != ApplicationStatus.APPROVED || !tournament.getIsActive()) {
+            throw new BaseException(ErrorCode.VAL_001, "Bu turnuva aktif değil veya henüz admin onayından geçmemiş.", HttpStatus.BAD_REQUEST, "");
         }
 
         if (tournament.getRegistrationDeadline() != null && new Date().after(tournament.getRegistrationDeadline())) {
@@ -281,7 +336,6 @@ public class TurnuvaService {
                     HttpStatus.BAD_REQUEST, "");
         }
 
-        // ÇAKIŞMA KONTROLÜ (Oyuncu başka turnuvada aynı tarihte meşgul mü?)
         for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
             boolean isBusy = tournamentApplicationPlayerRepository.isPlayerBusyInDateRange(userIdToSelect, tournament.getStart_date(), tournament.getFinish_date());
             if (isBusy) {
@@ -327,11 +381,9 @@ public class TurnuvaService {
         application.setRejectionReason(xssSanitizer.sanitizeAndLimit(request.getRejectionReason(), 500));
         application.setReviewedAt(java.time.LocalDateTime.now());
 
-        // Yedekten veya bekleyenden asile geçişte kapasite artır/güncelle
         if (request.getStatus() == TournamentApplicationStatus.APPROVED && oldStatus != TournamentApplicationStatus.APPROVED) {
             Turnuva tournament = application.getTournament();
             
-            // Eğer kapasite doluysa, kapasiteyi 1 artırır (Dinamik Kapasite Artırımı)
             if (tournament.getMaxParticipants() != null && tournament.getCurrentParticipantsCount() >= tournament.getMaxParticipants()) {
                 tournament.setMaxParticipants(tournament.getMaxParticipants() + 1);
             }
@@ -339,7 +391,6 @@ public class TurnuvaService {
             tournament.setCurrentParticipantsCount(tournament.getCurrentParticipantsCount() + 1);
             turnuvaRepository.save(tournament);
         } else if (oldStatus == TournamentApplicationStatus.APPROVED && request.getStatus() != TournamentApplicationStatus.APPROVED) {
-            // Asilden düşme
             Turnuva tournament = application.getTournament();
             tournament.setCurrentParticipantsCount(tournament.getCurrentParticipantsCount() - 1);
             turnuvaRepository.save(tournament);
@@ -348,7 +399,6 @@ public class TurnuvaService {
         return tournamentApplicationRepository.save(application);
     }
 
-    // --- ÖDÜL DAĞITIMI (FINISH) ---
     @Transactional
     public void finishTournamentAndDistributeRewards(Long tournamentId, RewardReportRequest reportRequest) {
         Turnuva turnuva = turnuvaRepository.findById(tournamentId)
@@ -367,12 +417,10 @@ public class TurnuvaService {
             reportedTotal = reportedTotal.add(item.getAmount());
         }
 
-        // Ödül doğrulama
         if (reportedTotal.compareTo(totalPrizePool) != 0) {
             throw new BaseException(ErrorCode.VAL_001, "Raporlanan toplam ödül (" + reportedTotal + "), turnuvanın toplam ödül havuzuna (" + totalPrizePool + ") eşit olmalıdır.", HttpStatus.BAD_REQUEST, "");
         }
 
-        // Bireysel Dağıtım
         for (RewardReportItem item : reportRequest.getRewards()) {
             TournamentApplication application = tournamentApplicationRepository.findById(item.getApplicationId())
                     .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Application bulunamadı: " + item.getApplicationId(), HttpStatus.NOT_FOUND, ""));
@@ -380,11 +428,9 @@ public class TurnuvaService {
             List<TournamentApplicationPlayer> players = application.getSelectedPlayers();
             if (players == null || players.isEmpty()) continue;
 
-            // Ödülü oyuncu sayısına böl
             BigDecimal amountPerPlayer = item.getAmount().divide(BigDecimal.valueOf(players.size()), 4, RoundingMode.DOWN);
 
             for (TournamentApplicationPlayer player : players) {
-                // Sadece Meydan Coin (MC) destekliyoruz (İlerde TRY eklenirse currency check konabilir)
                 walletService.rewardMeydanCoin(
                         player.getUserId(), 
                         amountPerPlayer, 
@@ -393,7 +439,6 @@ public class TurnuvaService {
             }
         }
         
-        // Turnuvayı inaktif yap / bitir
         turnuva.setIsActive(false);
         turnuvaRepository.save(turnuva);
         logger.info("Turnuva başarıyla sonlandırıldı ve ödüller dağıtıldı. Turnuva ID: {}", tournamentId);
@@ -408,13 +453,11 @@ public class TurnuvaService {
     }
 
     public List<TournamentApplication> getTournamentParticipants(Long tournamentId) {
-        // Herkes görebilir veya sadece adminler görebilir (Herkes görmeli ki takımları görsünler)
         return tournamentApplicationRepository.findByTournamentIdAndStatus(tournamentId, TournamentApplicationStatus.APPROVED);
     }
 
     public List<TournamentApplication> getUserApplications(Long userId) { return tournamentApplicationRepository.findByUserId(userId); }
 
-    // --- CHECK-IN (YOKLAMA) SİSTEMİ ---
     @Transactional
     public TournamentApplication performCheckIn(Long tournamentId) {
         Long requesterUserId = getCurrentUserId();
@@ -427,17 +470,19 @@ public class TurnuvaService {
         }
 
         Turnuva tournament = application.getTournament();
-        long now = System.currentTimeMillis();
-        long startTime = tournament.getStart_date().getTime();
+        
+        // Timezone sorununu çözmek adına doğrudan UTC/Epoch Timestamp kıyaslaması (daha güvenli)
+        long nowUtc = System.currentTimeMillis();
+        long startTimeUtc = tournament.getStart_date().getTime();
 
         int checkInMinutes = 60;
-        long checkInStartTime = startTime - (checkInMinutes * 60 * 1000L);
+        long checkInStartTimeUtc = startTimeUtc - (checkInMinutes * 60 * 1000L);
 
-        if (now < checkInStartTime) {
+        if (nowUtc < checkInStartTimeUtc) {
             throw new BaseException(ErrorCode.VAL_001, "Yoklama süresi henüz başlamadı! Maça " + checkInMinutes + " dakika kala açılacaktır.", HttpStatus.BAD_REQUEST, "");
         }
 
-        if (now > startTime) {
+        if (nowUtc > startTimeUtc) {
             throw new BaseException(ErrorCode.VAL_001, "Turnuva zaten başladı, check-in süresini kaçırdınız!", HttpStatus.BAD_REQUEST, "");
         }
 
@@ -445,7 +490,6 @@ public class TurnuvaService {
         return tournamentApplicationRepository.save(application);
     }
 
-    // --- ADMİN OVERRIDE (SÜRE UZATMA/KALDIRMA) ---
     @Transactional
     public Turnuva updateTournamentDeadline(Long tournamentId, Date newDeadline) {
         Turnuva turnuva = turnuvaRepository.findById(tournamentId)
@@ -458,7 +502,6 @@ public class TurnuvaService {
         return turnuvaRepository.save(turnuva);
     }
 
-    // --- VIP DAVET SİSTEMİ ---
     @Transactional
     public TournamentApplication inviteUserToTournament(Long tournamentId, Long targetUserId) {
         Turnuva turnuva = turnuvaRepository.findById(tournamentId)
@@ -483,7 +526,6 @@ public class TurnuvaService {
         return tournamentApplicationRepository.save(application);
     }
 
-    // --- OYUNCUNUN DAVETİ YANITLAMASI (ESNEK YAPI) ---
     @Transactional
     public TournamentApplication respondToTournamentInvite(Long applicationId, RespondToTournamentInviteRequest request) {
         Long targetUserId = getCurrentUserId();
@@ -497,7 +539,6 @@ public class TurnuvaService {
         boolean isOrgAdmin = false;
         
         if (!isInvitee) {
-            // Organizasyon kontrolü - Hem eski (ID tabanlı) hem yeni (Organizasyon entity tabanlı) destekler
             isOrgAdmin = turnuva.getOrganizationId().equals(targetUserId) || 
                          organizationMembershipRepository.existsByOrganizationIdAndUserIdAndRoleIn(
                              turnuva.getOrganizationId(), targetUserId, Arrays.asList(OrganizationRole.OWNER, OrganizationRole.ADMIN));
@@ -546,7 +587,6 @@ public class TurnuvaService {
                             HttpStatus.BAD_REQUEST, "");
                 }
 
-                // ÇAKIŞMA KONTROLÜ (Oyuncu başka turnuvada aynı tarihte meşgul mü?)
                 for (Long userIdToSelect : request.getSelectedClanMemberIds()) {
                     boolean isBusy = tournamentApplicationPlayerRepository.isPlayerBusyInDateRange(userIdToSelect, turnuva.getStart_date(), turnuva.getFinish_date());
                     if (isBusy) {

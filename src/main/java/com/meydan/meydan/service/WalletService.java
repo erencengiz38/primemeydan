@@ -32,12 +32,8 @@ public class WalletService {
 
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
-    private final UserRepository userRepository; // Geriye dönük cüzdan oluşturmak için eklendi
+    private final UserRepository userRepository;
 
-    /**
-     * Uygulama ayağa kalktığında (ApplicationReadyEvent) çalışır.
-     * Cüzdan sistemi eklenmeden ÖNCE kayıt olmuş eski kullanıcılara otomatik olarak cüzdan açar.
-     */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void createWalletsForExistingUsers() {
@@ -63,7 +59,6 @@ public class WalletService {
         }
     }
 
-    // --- Yardımcı Metot: Kullanıcının Cüzdanını Getir veya Oluştur ---
     public Wallet getOrCreateWallet(Long userId) {
         return walletRepository.findByUserId(userId).orElseGet(() -> {
             Wallet newWallet = new Wallet();
@@ -74,33 +69,38 @@ public class WalletService {
         });
     }
 
-    // --- Kullanıcının İşlem Geçmişini Getir ---
+    @Transactional
+    public Wallet getOrCreateWalletForUpdate(Long userId) {
+        return walletRepository.findByUserIdForUpdate(userId).orElseGet(() -> {
+            Wallet newWallet = new Wallet();
+            newWallet.setUserId(userId);
+            newWallet.setRealBalance(BigDecimal.ZERO);
+            newWallet.setMeydanCoin(BigDecimal.ZERO);
+            return walletRepository.save(newWallet);
+        });
+    }
+
     public List<WalletTransaction> getWalletTransactions(Long userId) {
         Wallet wallet = getOrCreateWallet(userId);
         return walletTransactionRepository.findByWalletIdOrderByTransactionDateDesc(wallet.getId());
     }
 
-    /**
-     * 1. Gerçek Para (TL) ile Satın Alma İşlemi
-     */
     @Transactional
     public void processRealPurchase(Long userId, BigDecimal amount, String description) {
         if (amount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BaseException(ErrorCode.VAL_001, "İşlem tutarı sıfırdan küçük olamaz.", HttpStatus.BAD_REQUEST, "");
         }
 
-        Wallet wallet = getOrCreateWallet(userId);
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         if (wallet.getRealBalance().compareTo(amount) < 0) {
             logger.warn("Yetersiz TL Bakiyesi: Kullanıcı ID={}, Mevcut TL={}, İstenen={}", userId, wallet.getRealBalance(), amount);
             throw new InSufficientBalanceException("Gerçek TL bakiyeniz bu işlem için yetersiz. Lütfen bakiye yükleyiniz.");
         }
 
-        // Bakiyeyi düş
         wallet.setRealBalance(wallet.getRealBalance().subtract(amount));
         walletRepository.save(wallet);
 
-        // Transaction Log
         WalletTransaction transaction = new WalletTransaction();
         transaction.setWallet(wallet);
         transaction.setType(TransactionType.PURCHASE);
@@ -113,27 +113,22 @@ public class WalletService {
         logger.info("TL Harcaması Başarılı: Kullanıcı ID={}, Tutar={}, Açıklama={}", userId, amount, description);
     }
 
-    /**
-     * 2. Turnuva/Görev Başarısı ile Meydan Coin Kazanma
-     */
     @Transactional
     public void rewardMeydanCoin(Long userId, BigDecimal amount, String description) {
         if (amount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BaseException(ErrorCode.VAL_001, "Ödül tutarı sıfırdan küçük olamaz.", HttpStatus.BAD_REQUEST, "");
         }
 
-        Wallet wallet = getOrCreateWallet(userId);
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
-        // Bakiyeyi artır
         wallet.setMeydanCoin(wallet.getMeydanCoin().add(amount));
         walletRepository.save(wallet);
 
-        // Transaction Log
         WalletTransaction transaction = new WalletTransaction();
         transaction.setWallet(wallet);
         transaction.setType(TransactionType.COIN_REWARD);
         transaction.setCurrencyType(CurrencyType.MEYDAN_COIN);
-        transaction.setAmount(amount); // Pozitif miktar
+        transaction.setAmount(amount);
         transaction.setDescription(description);
         transaction.setTransactionDate(LocalDateTime.now());
         walletTransactionRepository.save(transaction);
@@ -141,27 +136,22 @@ public class WalletService {
         logger.info("Meydan Coin Kazanıldı: Kullanıcı ID={}, Tutar={}, Açıklama={}", userId, amount, description);
     }
 
-    /**
-     * 3. Mağazada vb. Meydan Coin Harcama
-     */
     @Transactional
     public void spendMeydanCoin(Long userId, BigDecimal amount, String description) {
         if (amount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BaseException(ErrorCode.VAL_001, "Harcama tutarı sıfırdan küçük olamaz.", HttpStatus.BAD_REQUEST, "");
         }
 
-        Wallet wallet = getOrCreateWallet(userId);
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         if (wallet.getMeydanCoin().compareTo(amount) < 0) {
             logger.warn("Yetersiz Meydan Coin: Kullanıcı ID={}, Mevcut Coin={}, İstenen={}", userId, wallet.getMeydanCoin(), amount);
             throw new InSufficientBalanceException("Meydan Coin bakiyeniz bu işlem için yetersiz.");
         }
 
-        // Bakiyeyi düş
         wallet.setMeydanCoin(wallet.getMeydanCoin().subtract(amount));
         walletRepository.save(wallet);
 
-        // Transaction Log
         WalletTransaction transaction = new WalletTransaction();
         transaction.setWallet(wallet);
         transaction.setType(TransactionType.COIN_SPEND);
