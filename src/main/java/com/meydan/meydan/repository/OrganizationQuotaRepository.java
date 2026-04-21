@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 @Repository
 public interface OrganizationQuotaRepository extends JpaRepository<OrganizationQuota, Long> {
 
+    // HATALI SATIR (findByUserId) SİLİNDİ! 🚀
+
     @Modifying
     @Query("UPDATE OrganizationQuota q SET q.currentSpent = 0, q.lastResetDate = :now")
     int resetAllQuotas(@Param("now") LocalDateTime now);

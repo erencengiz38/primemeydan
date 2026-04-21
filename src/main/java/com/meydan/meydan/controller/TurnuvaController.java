@@ -5,7 +5,7 @@ import com.meydan.meydan.dto.response.TournamentApplicationResponseDTO;
 import com.meydan.meydan.dto.response.TurnuvaResponseDTO;
 import com.meydan.meydan.models.entities.TournamentApplication;
 import com.meydan.meydan.models.entities.Turnuva;
-import com.meydan.meydan.request.AdminReviewRequest; // Admin notları için
+import com.meydan.meydan.request.AdminReviewRequest;
 import com.meydan.meydan.request.Turnuva.AddTurnuvaRequestBody;
 import com.meydan.meydan.request.Turnuva.ApplyToTournamentRequestBody;
 import com.meydan.meydan.request.Turnuva.UpdateApplicationStatusRequestBody;
@@ -72,14 +72,14 @@ public class TurnuvaController {
     // --- 1. TEMEL CRUD İŞLEMLERİ ---
 
     @PostMapping("/{organizationId}/create")
-    @Operation(summary = "Yeni turnuva oluştur", description = "Oluşturulan turnuva admin onayına (PENDING) düşer.")
+    @Operation(summary = "Yeni turnuva oluştur", description = "Oluşturulan turnuva otomatik olarak ONAYLANIR (APPROVED) ve yayına alınır.")
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> createTurnuva(
             @PathVariable Long organizationId,
             @Valid @RequestBody AddTurnuvaRequestBody request) {
 
         Turnuva turnuva = turnuvaService.createTurnuva(request, organizationId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ApiResponse<>(true, "Turnuva başarıyla oluşturuldu ve admin onayına gönderildi.", mapToTurnuvaDTO(turnuva)));
+                .body(new ApiResponse<>(true, "Turnuva başarıyla oluşturuldu ve yayına alındı.", mapToTurnuvaDTO(turnuva)));
     }
 
     @PutMapping("/{organizationId}/update")
@@ -103,13 +103,13 @@ public class TurnuvaController {
     }
 
     @PostMapping("/{id}/{organizationId}/restore")
-    @Operation(summary = "Turnuvayı geri yükle", description = "Geri yüklenen turnuva tekrar admin onayına düşer.")
+    @Operation(summary = "Turnuvayı geri yükle", description = "Geri yüklenen turnuva otomatik olarak ONAYLANIR (APPROVED) ve yayına alınır.")
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> restoreTurnuva(
             @PathVariable Long id,
             @PathVariable Long organizationId) {
 
         Turnuva restoredTurnuva = turnuvaService.restoreTurnuva(id, organizationId);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva geri yüklendi ve admin onayına gönderildi.", mapToTurnuvaDTO(restoredTurnuva)));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva geri yüklendi ve yayına alındı.", mapToTurnuvaDTO(restoredTurnuva)));
     }
 
     @DeleteMapping("/{id}/{organizationId}/permanent")
@@ -198,7 +198,7 @@ public class TurnuvaController {
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> approveTurnuva(
             @PathVariable Long turnuvaId,
             @RequestBody(required = false) AdminReviewRequest request) {
-        
+
         String notes = request != null ? request.getAdminNotes() : null;
         Turnuva turnuva = turnuvaService.approveTurnuva(turnuvaId, notes);
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva onaylandı ve yayına alındı", mapToTurnuvaDTO(turnuva)));
@@ -210,7 +210,7 @@ public class TurnuvaController {
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> rejectTurnuva(
             @PathVariable Long turnuvaId,
             @RequestBody AdminReviewRequest request) {
-        
+
         Turnuva turnuva = turnuvaService.rejectTurnuva(turnuvaId, request.getAdminNotes());
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva reddedildi", mapToTurnuvaDTO(turnuva)));
     }
@@ -244,7 +244,7 @@ public class TurnuvaController {
                 .map(this::mapToApplicationDTO).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Başvurular getirildi", dtoList));
     }
-    
+
     @GetMapping("/{tournamentId}/participants")
     @Operation(summary = "Turnuvaya katılan onaylı takımları (Asil Kadro) listele")
     public ResponseEntity<ApiResponse<List<TournamentApplicationResponseDTO>>> getTournamentParticipants(@PathVariable Long tournamentId) {
@@ -303,9 +303,9 @@ public class TurnuvaController {
         TournamentApplication application = turnuvaService.performCheckIn(tournamentId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Check-in başarılı", mapToApplicationDTO(application)));
     }
-    
+
     // --- 5. FİNANS VE ÖDÜL ---
-    
+
     @PostMapping("/{tournamentId}/finish")
     @Operation(summary = "Turnuvayı Bitir ve Ödülleri Dağıt", description = "Sadece organizatör yapabilir. Ödül havuzundaki MEYDAN_COIN'ler, kazanan takımların oyuncularına eşit paylaştırılır.")
     public ResponseEntity<ApiResponse<Void>> finishTournament(

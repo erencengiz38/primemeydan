@@ -1,6 +1,7 @@
 package com.meydan.meydan.controller;
 
 import com.meydan.meydan.dto.ApiResponse;
+import com.meydan.meydan.dto.OrganizationMembershipDTO;
 import com.meydan.meydan.dto.Turnuva.UpdateApplicationStatusRequestBody;
 import com.meydan.meydan.dto.response.OrganizationMemberResponseDTO;
 import com.meydan.meydan.dto.response.OrganizationQuotaResponseDTO;
@@ -10,6 +11,7 @@ import com.meydan.meydan.models.entities.OrganizationApplication;
 import com.meydan.meydan.models.entities.OrganizationMembership;
 import com.meydan.meydan.request.Organization.CreateOrganizationRequestBody;
 import com.meydan.meydan.service.OrganizationApplicationService;
+import com.meydan.meydan.service.OrganizationMembershipService;
 import com.meydan.meydan.service.OrganizationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,6 +34,7 @@ public class OrganizationController {
 
     private final OrganizationService organizationService;
     private final OrganizationApplicationService applicationService;
+    private final OrganizationMembershipService membershipService; // Eklendi
     private final ModelMapper modelMapper;
 
     private Long getCurrentUserId() {
@@ -48,6 +51,14 @@ public class OrganizationController {
         dto.setOrganizationId(member.getOrganization().getId());
         dto.setOrganizationName(member.getOrganization().getName());
         return dto;
+    }
+
+    @GetMapping("/my-memberships")
+    @Operation(summary = "Kullanıcının kendi organizasyon üyeliklerini listele")
+    public ResponseEntity<ApiResponse<List<OrganizationMembershipDTO>>> getMyMemberships() {
+        Long userId = getCurrentUserId();
+        List<OrganizationMembershipDTO> memberships = membershipService.getMembershipsByUserId(userId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Üyelikleriniz başarıyla getirildi", memberships));
     }
 
     @GetMapping("/list")
@@ -76,7 +87,19 @@ public class OrganizationController {
         Long newOrgId = organizationService.createOrganization(request, creatorId);
         return ResponseEntity.ok(newOrgId);
     }
+    @GetMapping("/my")
+    @Operation(summary = "Giriş yapan kullanıcının organizasyonlarını getir")
+    public ResponseEntity<ApiResponse<List<Organization>>> getMyOrganizations() {
+        // 1. Güvenlik context'inden o anki kullanıcının ID'sini al
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = Long.parseLong(authentication.getName());
 
+        // 2. Servisten listeyi iste
+        List<Organization> myOrgs = organizationService.getMyOrganizations(userId);
+
+        // 3. ApiResponse formatında paketleyip dön
+        return ResponseEntity.ok(new ApiResponse<>(true, "Organizasyonlarınız başarıyla getirildi.", myOrgs));
+    }
     @PostMapping("/apply")
     @Operation(summary = "Organizasyona katılmak için başvur")
     public ResponseEntity<Void> applyToOrganization(

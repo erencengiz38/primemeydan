@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,26 +31,27 @@ public class OrganizationService {
     private final OrganizationQuotaRepository organizationQuotaRepository;
     private final ModelMapper modelMapper;
 
+public List<Organization> getMyOrganizations(Long userId) {
+    // 1. Üyelik tablosundan kullanıcının tüm kayıtlarını çek
+    List<OrganizationMembership> memberships = membershipRepository.findByUserId(userId);
+
+    // 2. Kayıtların içindeki organizasyonları ayıkla ve listeye çevir
+    return memberships.stream()
+            .map(OrganizationMembership::getOrganization)
+            .collect(Collectors.toList());
+}
     @Transactional
     public Long createOrganization(CreateOrganizationRequestBody request, Long creatorId) {
-
-        // 1. KATEGORİ GERÇEKTEN VAR MI KONTROLÜ
+        // Kategori Kontrolü
         categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Hata: Sistemde böyle bir kategori bulunamadı! (ID: " + request.getCategoryId() + ")"));
+                .orElseThrow(() -> new RuntimeException("Hata: Kategori bulunamadı!"));
 
-        // 2. KULLANICI BU KATEGORİDE ZATEN ORGANİZASYON SAHİBİ Mİ?
-        if (membershipRepository.existsByUserIdAndRoleAndOrganization_CategoryId(creatorId, OrganizationRole.OWNER, request.getCategoryId())) {
-            throw new RuntimeException("Bu kategoride zaten bir organizasyonunuz var!");
-        }
-
-        // 3. MAP'LEME VE ORGANİZASYONU KAYDETME
+        // Organizasyonu Kaydet
         Organization organization = modelMapper.map(request, Organization.class);
-
         organization.setId(null);
-
         Organization savedOrganization = organizationRepository.save(organization);
 
-        // 4. ÜYELİK İŞLEMLERİ (Kurucuyu OWNER olarak organizasyona bağlama)
+        // Üyeliği Kaydet (Owner olarak)
         User creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı."));
 
@@ -57,19 +59,17 @@ public class OrganizationService {
         membership.setId(new OrganizationMembershipId(savedOrganization.getId(), creator.getId()));
         membership.setOrganization(savedOrganization);
         membership.setUser(creator);
-        membership.setRole(OrganizationRole.OWNER); 
-
+        membership.setRole(OrganizationRole.OWNER);
         membershipRepository.save(membership);
 
-        // 5. YENİ KURAL: ORGANİZASYON KOTASINI BAŞLAT
+        // KOTAYI SIFIR (0) OLARAK BAŞLAT 💰
         OrganizationQuota quota = new OrganizationQuota();
         quota.setOrganizationId(savedOrganization.getId());
-        quota.setWeeklyLimit(BigDecimal.valueOf(5000)); // Varsayılan: 5000 MC
-        quota.setCurrentSpent(BigDecimal.ZERO);
+        quota.setWeeklyLimit(BigDecimal.valueOf(5000));
+        quota.setCurrentSpent(BigDecimal.ZERO); // Bak burası önemli, 5000 yaparsan yine 0 MC kalır.
         quota.setLastResetDate(LocalDateTime.now());
         organizationQuotaRepository.save(quota);
 
-        logger.info("Yeni organizasyon oluşturuldu. OrgId: {}, Haftalık Kota: 5000 MC", savedOrganization.getId());
         return savedOrganization.getId();
     }
 
