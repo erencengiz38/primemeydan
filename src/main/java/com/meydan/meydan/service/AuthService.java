@@ -62,6 +62,7 @@ public class AuthService {
         user.setDisplay_name(sanitizedDisplayName);
         user.setTag(""); 
         user.setRole(Role.USER); 
+        user.setDevicePlatform(request.getDevicePlatform());
 
         User savedUser = userRepository.save(user);
 

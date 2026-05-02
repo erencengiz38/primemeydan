@@ -1,5 +1,6 @@
 package com.meydan.meydan.request.Clan;
 
+import com.meydan.meydan.models.enums.DevicePlatform;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -23,4 +24,7 @@ public class AddClanRequestBody {
     private String description;
 
     private String logo;
+
+    @NotNull(message = "Cihaz platformu (PC/MOBILE/BOTH) gereklidir")
+    private DevicePlatform devicePlatform;
 }

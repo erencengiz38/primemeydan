@@ -1,12 +1,16 @@
 package com.meydan.meydan.models.entities;
 
 import com.meydan.meydan.models.enums.ApplicationStatus;
+import com.meydan.meydan.models.enums.DevicePlatform;
 import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Entity
 @Table(name = "turnuva")
@@ -41,6 +45,10 @@ public class Turnuva extends BaseEntity {
     @JoinColumn(name = "category_id")
     private Category category;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_platform")
+    private DevicePlatform devicePlatform;
+
     private Boolean isActive = true;
 
     // --- YENİ EKLENEN ONAY ALANLARI ---
@@ -70,4 +78,14 @@ public class Turnuva extends BaseEntity {
 
     @Column(name = "current_participants_count")
     private Integer currentParticipantsCount = 0;
+
+    // --- TURNUVA KURALLARI (Madde Madde) ---
+    @ElementCollection
+    @CollectionTable(name = "turnuva_rules", joinColumns = @JoinColumn(name = "turnuva_id"))
+    @Column(name = "rule", columnDefinition = "TEXT")
+    private List<String> rules = new ArrayList<>();
+
+    // --- GİRİŞ ÜCRETİ ---
+    @Column(name = "entry_fee")
+    private Double entryFee = 0.0;
 }

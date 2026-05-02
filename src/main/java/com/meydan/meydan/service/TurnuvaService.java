@@ -126,6 +126,7 @@ public class TurnuvaService {
         turnuva.setReward_currency(request.getReward_currency() != null ? request.getReward_currency() : "MEYDAN_COIN");
         turnuva.setPlayer_format(request.getPlayer_format());
         turnuva.setTournamentFormat(request.getTournamentFormat());
+        turnuva.setDevicePlatform(request.getDevicePlatform()); // Cihaz platformu ayarlandı
         turnuva.setRegistrationDeadline(request.getRegistrationDeadline());
         turnuva.setMaxParticipants(request.getMaxParticipants());
         turnuva.setMinParticipants(request.getMinParticipants());
@@ -133,6 +134,18 @@ public class TurnuvaService {
         turnuva.setMaxTeamSize(request.getMaxTeamSize());
         turnuva.setMatchCapacity(request.getMatchCapacity());
         turnuva.setCurrentParticipantsCount(0);
+        
+        // Giriş ücreti ataması
+        turnuva.setEntryFee(request.getEntryFee() != null ? request.getEntryFee() : 0.0);
+
+        // Turnuva kurallarını ekle ve XSS kontrolünden geçir
+        if (request.getRules() != null) {
+            List<String> sanitizedRules = new ArrayList<>();
+            for (String rule : request.getRules()) {
+                sanitizedRules.add(xssSanitizer.sanitizeAndLimit(rule, 500)); // Her bir kuralı maksimum 500 karakterle sınırla
+            }
+            turnuva.setRules(sanitizedRules);
+        }
 
         turnuva.setId(null);
         turnuva.setCategory(category);

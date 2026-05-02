@@ -51,6 +51,17 @@ public class ClanController {
         if (member.getClan() != null) {
             dto.setClanName(member.getClan().getName());
         }
+        
+        // Üyenin bilgilerini UserRepository'den çekip DTO'ya ekle
+        if (member.getUserId() != null) {
+            Optional<User> userOpt = userRepository.findById(member.getUserId());
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                dto.setUserName(user.getDisplay_name());
+                dto.setUserTag(user.getTag());
+            }
+        }
+
         return dto;
     }
 

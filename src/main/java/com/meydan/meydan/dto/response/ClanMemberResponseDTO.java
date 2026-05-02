@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 public class ClanMemberResponseDTO {
     private Long id;
     private Long userId;
+    private String userName; // Eklendi
+    private String userTag;  // Eklendi
     private Long clanId;
     private String clanName; // Yardımcı bilgi
     private Long categoryId;

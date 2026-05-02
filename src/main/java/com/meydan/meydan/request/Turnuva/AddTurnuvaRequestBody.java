@@ -1,10 +1,12 @@
 package com.meydan.meydan.request.Turnuva;
 
+import com.meydan.meydan.models.enums.DevicePlatform;
 import com.meydan.meydan.models.enums.TournamentFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.util.Date;
+import java.util.List;
 
 @Data
 public class AddTurnuvaRequestBody {
@@ -43,8 +45,15 @@ public class AddTurnuvaRequestBody {
     @NotNull(message = "Turnuva formatı (SCRIM/STAGE_BASED) gereklidir")
     private TournamentFormat tournamentFormat;
 
+    @NotNull(message = "Cihaz platformu (PC/MOBILE/BOTH) gereklidir")
+    private DevicePlatform devicePlatform;
+
     private String imageUrl;
     private Double reward_amount;
     private String reward_currency;
     private String player_format;
+    
+    private List<String> rules; // Madde madde kurallar eklendi
+
+    private Double entryFee = 0.0; // Giriş ücreti eklendi
 }

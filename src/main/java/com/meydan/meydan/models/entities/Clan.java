@@ -1,6 +1,7 @@
 package com.meydan.meydan.models.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.meydan.meydan.models.enums.DevicePlatform;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -37,6 +38,10 @@ public class Clan {
     private String description;
 
     private String logo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_platform")
+    private DevicePlatform devicePlatform;
 
     @Column(nullable = false)
     private Boolean isActive = true;

@@ -53,6 +53,12 @@ public class TurnuvaController {
             dto.setCategoryId(turnuva.getCategory().getId());
             dto.setCategoryName(turnuva.getCategory().getName());
         }
+        
+        // Null koruması: Eski kayıtlarda giriş ücreti null ise 0.0 olarak çevir
+        if (dto.getEntryFee() == null) {
+            dto.setEntryFee(0.0);
+        }
+        
         return dto;
     }
 

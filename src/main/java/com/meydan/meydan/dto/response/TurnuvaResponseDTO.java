@@ -1,8 +1,10 @@
 package com.meydan.meydan.dto.response;
 
 import com.meydan.meydan.models.enums.ApplicationStatus;
+import com.meydan.meydan.models.enums.DevicePlatform;
 import lombok.Data;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -33,4 +35,9 @@ public class TurnuvaResponseDTO {
     private Integer currentParticipantsCount;
     private ApplicationStatus approvalStatus;
     private String adminNotes;
+    
+    // YENİ EKLENEN ALANLAR: Listeleme ve detaylarda verilecekler
+    private DevicePlatform devicePlatform;
+    private List<String> rules;
+    private Double entryFee; // Giriş ücreti eklendi
 }

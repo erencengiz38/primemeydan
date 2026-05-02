@@ -1,5 +1,6 @@
 package com.meydan.meydan.models.entities;
 
+import com.meydan.meydan.models.enums.DevicePlatform;
 import com.meydan.meydan.models.enums.Role;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -29,4 +30,8 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     private Role role = Role.USER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_platform")
+    private DevicePlatform devicePlatform;
 }

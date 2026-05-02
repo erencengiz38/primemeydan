@@ -132,6 +132,7 @@ public class ClanService {
         Clan clan = modelMapper.map(request, Clan.class);
         clan.setId(null);
         clan.setCategory(category);
+        clan.setDevicePlatform(request.getDevicePlatform()); // Set device platform
         clan.setIsActive(true);
 
         Clan savedClan = clanRepository.save(clan);
