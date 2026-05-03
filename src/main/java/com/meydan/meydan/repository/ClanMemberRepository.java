@@ -29,4 +29,8 @@ public interface ClanMemberRepository extends JpaRepository<ClanMember, Long> {
     List<ClanMember> findByClanIdAndRoleInAndIsActiveTrue(Long clanId, List<ClanMemberRole> roles);
 
     Optional<ClanMember> findByIdAndIsActiveTrue(Long id);
+
+    // Kullanıcının aktif olduğu klanleri getir (clan de aktif olmalı)
+    @Query("SELECT cm FROM ClanMember cm WHERE cm.userId = :userId AND cm.isActive = true AND cm.clan.isActive = true")
+    List<ClanMember> findUserActiveClans(@Param("userId") Long userId);
 }

@@ -12,6 +12,7 @@ public class TurnuvaResponseDTO {
     private Long id;
     private UUID oid;
     private Long organizationId;
+    private String organizationLogoUrl;
     private Long categoryId;
     private String categoryName;
     private String title;
@@ -35,9 +36,7 @@ public class TurnuvaResponseDTO {
     private Integer currentParticipantsCount;
     private ApplicationStatus approvalStatus;
     private String adminNotes;
-    
-    // YENİ EKLENEN ALANLAR: Listeleme ve detaylarda verilecekler
     private DevicePlatform devicePlatform;
     private List<String> rules;
-    private Double entryFee; // Giriş ücreti eklendi
+    private Double entryFee;
 }

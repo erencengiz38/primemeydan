@@ -23,6 +23,7 @@ public class OrganizationCreationApplicationService {
     private final OrganizationRepository organizationRepository;
     private final OrganizationMembershipRepository membershipRepository;
     private final OrganizationQuotaRepository organizationQuotaRepository;
+    private final CloudinaryService cloudinaryService;
 
     public OrganizationCreationApplicationService(
             OrganizationCreationApplicationRepository applicationRepository,
@@ -30,13 +31,15 @@ public class OrganizationCreationApplicationService {
             CategoryRepository categoryRepository,
             OrganizationRepository organizationRepository,
             OrganizationMembershipRepository membershipRepository,
-            OrganizationQuotaRepository organizationQuotaRepository) {
+            OrganizationQuotaRepository organizationQuotaRepository,
+            CloudinaryService cloudinaryService) {
         this.applicationRepository = applicationRepository;
         this.userRepository = userRepository;
         this.categoryRepository = categoryRepository;
         this.organizationRepository = organizationRepository;
         this.membershipRepository = membershipRepository;
         this.organizationQuotaRepository = organizationQuotaRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
     @Transactional
@@ -61,7 +64,6 @@ public class OrganizationCreationApplicationService {
         application.setCategoryId(request.getCategoryId());
         application.setOrganizationName(request.getOrganizationName());
         application.setDescription(request.getDescription());
-        application.setLogoUrl(request.getLogoUrl());
         application.setHasPreviousExperience(request.getHasPreviousExperience());
         application.setPreviousExperienceDetails(request.getPreviousExperienceDetails());
         application.setManagementPlan(request.getManagementPlan());
@@ -75,16 +77,31 @@ public class OrganizationCreationApplicationService {
         application.setRulesAccepted(request.getRulesAccepted());
         application.setNoVictimAccepted(request.getNoVictimAccepted());
         application.setStatus(ApplicationStatus.PENDING);
-        application.setAppliedAt(LocalDateTime.now()); // Güvenlik için manuel atama eklendi
+        application.setAppliedAt(LocalDateTime.now());
 
-        applicationRepository.save(application);
+        application = applicationRepository.save(application);
+
+        if (request.getLogo() != null && !request.getLogo().isEmpty()) {
+            try {
+                MediaAsset asset = cloudinaryService.uploadAndSaveImage(
+                        request.getLogo(),
+                        "ORGANIZATION_LOGO",
+                        application.getId().toString()
+                );
+                application.setLogoUrl(asset.getImageUrl());
+                applicationRepository.save(application);
+            } catch (Exception e) {
+                throw new RuntimeException("Logo yükleme işlemi başarısız oldu.");
+            }
+        }
+
         return "Başvurunuz başarıyla alınmıştır. Admin onayından sonra bilgilendirileceksiniz.";
     }
 
     public List<OrganizationCreationApplication> getPendingApplications() {
         return applicationRepository.findByStatus(ApplicationStatus.PENDING);
     }
-    
+
     public List<OrganizationCreationApplication> getMyApplications(Long userId) {
         return applicationRepository.findByUserId(userId);
     }
@@ -98,45 +115,39 @@ public class OrganizationCreationApplicationService {
             throw new RuntimeException("Bu başvuru zaten değerlendirilmiş.");
         }
 
-        // 1. Kullanıcının bu kategoride zaten organizasyonu var mı?
         if (membershipRepository.existsByUserIdAndRoleAndOrganization_CategoryId(application.getUserId(), OrganizationRole.OWNER, application.getCategoryId())) {
             throw new RuntimeException("Bu kullanıcının belirtilen kategoride zaten bir organizasyonu var!");
         }
 
-        // 2. Başvuruyu onaylandı olarak işaretle
         application.setStatus(ApplicationStatus.APPROVED);
         application.setAdminNotes(request.getAdminNotes());
         applicationRepository.save(application);
 
         User user = userRepository.findById(application.getUserId())
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı."));
-        
-        // 3. Kullanıcı Rolünü ORGANIZER yap
+
         user.setRole(Role.ORGANIZER);
         userRepository.save(user);
 
-        // 4. Organizasyonu (Asıl Tabloya) Oluştur
         Organization organization = new Organization();
         organization.setCategoryId(application.getCategoryId());
         organization.setName(application.getOrganizationName());
         organization.setDescription(application.getDescription());
         organization.setLogoUrl(application.getLogoUrl());
         organization.setCreatedAt(LocalDateTime.now());
-        
+
         Organization savedOrganization = organizationRepository.save(organization);
 
-        // 5. Başvuru sahibini OWNER (Kurucu) olarak ekle
         OrganizationMembership membership = new OrganizationMembership();
         membership.setId(new OrganizationMembershipId(savedOrganization.getId(), user.getId()));
         membership.setOrganization(savedOrganization);
         membership.setUser(user);
-        membership.setRole(OrganizationRole.OWNER); 
+        membership.setRole(OrganizationRole.OWNER);
         membershipRepository.save(membership);
 
-        // 6. Haftalık Kota Sistemini Başlat
         OrganizationQuota quota = new OrganizationQuota();
         quota.setOrganizationId(savedOrganization.getId());
-        quota.setWeeklyLimit(BigDecimal.valueOf(5000)); // Varsayılan: 5000 MC
+        quota.setWeeklyLimit(BigDecimal.valueOf(5000));
         quota.setCurrentSpent(BigDecimal.ZERO);
         quota.setLastResetDate(LocalDateTime.now());
         organizationQuotaRepository.save(quota);

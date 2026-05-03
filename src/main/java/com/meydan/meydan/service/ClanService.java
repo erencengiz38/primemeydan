@@ -5,13 +5,11 @@ import com.meydan.meydan.exception.ErrorCode;
 import com.meydan.meydan.models.entities.*;
 import com.meydan.meydan.models.enums.ClanInvitationType;
 import com.meydan.meydan.models.enums.ClanMemberRole;
-import com.meydan.meydan.repository.CategoryRepository;
-import com.meydan.meydan.repository.ClanInvitationRepository;
-import com.meydan.meydan.repository.ClanMemberRepository;
-import com.meydan.meydan.repository.ClanRepository;
+import com.meydan.meydan.repository.*;
 import com.meydan.meydan.request.Clan.AddClanRequestBody;
 import com.meydan.meydan.request.Clan.RespondToInvitationRequest;
 import com.meydan.meydan.request.Clan.UpdateClanMemberRoleRequestBody;
+import com.meydan.meydan.request.Clan.UpdateClanRequestBody;
 import com.meydan.meydan.util.XssSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -24,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -35,6 +34,9 @@ public class ClanService {
     private final ClanMemberRepository clanMemberRepository;
     private final CategoryRepository categoryRepository;
     private final ClanInvitationRepository clanInvitationRepository;
+    private final ClanWalletTransactionRepository clanWalletTransactionRepository;
+    private final UserRepository userRepository;
+    private final WalletService walletService;
     private final ModelMapper modelMapper;
     private final XssSanitizer xssSanitizer;
 
@@ -90,7 +92,7 @@ public class ClanService {
                 ));
     }
 
-    // --- Clan Create Operation ---
+    // --- Clan Create and Update Operations ---
     @Transactional
     public Clan createClan(AddClanRequestBody request) {
         Long creatorUserId = getCurrentUserId();
@@ -142,6 +144,25 @@ public class ClanService {
         return savedClan;
     }
 
+    @Transactional
+    public Clan updateClan(Long clanId, UpdateClanRequestBody request) {
+        Long currentUserId = getCurrentUserId();
+        Clan clan = getClanById(clanId);
+
+        // Sadece OWNER ve MANAGER güncelleyebilir
+        checkPermission(clanId, currentUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Klan bilgilerini güncelleme yetkiniz yok.");
+
+        if (request.getDescription() != null) {
+            clan.setDescription(xssSanitizer.sanitizeAndLimit(request.getDescription(), 1000));
+        }
+
+        if (request.getLogo() != null && !request.getLogo().trim().isEmpty()) {
+            clan.setLogo(request.getLogo());
+        }
+
+        return clanRepository.save(clan);
+    }
+
     // --- Invitation and Application System ---
 
     @Transactional
@@ -159,7 +180,7 @@ public class ClanService {
             );
         }
         if (clanInvitationRepository.findByClanIdAndUserIdAndStatus(clanId, userIdToInvite, ClanInvitationStatus.PENDING).isPresent()) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu kullanıcıya zaten bekleyen bir davet/başvuru var.",
                     HttpStatus.BAD_REQUEST,
@@ -181,7 +202,7 @@ public class ClanService {
         Clan clan = getClanById(clanId);
 
         if (clanMemberRepository.existsActiveMemberInActiveClan(applicantUserId, clan.getCategory().getId())) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu oyun kategorisinde zaten aktif bir clan üyesisiniz.",
                     HttpStatus.BAD_REQUEST,
@@ -189,7 +210,7 @@ public class ClanService {
             );
         }
         if (clanInvitationRepository.findByClanIdAndUserIdAndStatus(clanId, applicantUserId, ClanInvitationStatus.PENDING).isPresent()) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu clana zaten bekleyen bir başvurun/davetin var.",
                     HttpStatus.BAD_REQUEST,
@@ -217,7 +238,7 @@ public class ClanService {
                 ));
 
         if (!invitation.getUserId().equals(respondingUserId)) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.AUTH_001,
                     "Bu davete cevap verme yetkiniz yok.",
                     HttpStatus.FORBIDDEN,
@@ -225,7 +246,7 @@ public class ClanService {
             );
         }
         if (invitation.getStatus() != ClanInvitationStatus.PENDING) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu davet zaten cevaplanmış veya iptal edilmiş.",
                     HttpStatus.BAD_REQUEST,
@@ -233,7 +254,7 @@ public class ClanService {
             );
         }
         if (invitation.getType() != ClanInvitationType.INVITATION) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu bir davet değil, başvuru.",
                     HttpStatus.BAD_REQUEST,
@@ -266,7 +287,7 @@ public class ClanService {
         checkPermission(application.getClan().getId(), requesterUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Başvuruya cevap verme yetkiniz yok.");
 
         if (application.getStatus() != ClanInvitationStatus.PENDING) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu başvuru zaten cevaplanmış veya iptal edilmiş.",
                     HttpStatus.BAD_REQUEST,
@@ -274,7 +295,7 @@ public class ClanService {
             );
         }
         if (application.getType() != ClanInvitationType.APPLICATION) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Bu bir başvuru değil, davet.",
                     HttpStatus.BAD_REQUEST,
@@ -309,7 +330,7 @@ public class ClanService {
                 .orElse(false);
 
         if (!invitation.getInviterId().equals(requesterUserId) && !isOwnerOrManager) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.AUTH_001,
                     "Bu işlemi iptal etme yetkiniz yok.",
                     HttpStatus.FORBIDDEN,
@@ -317,7 +338,7 @@ public class ClanService {
             );
         }
         if (invitation.getStatus() != ClanInvitationStatus.PENDING) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Sadece bekleyen işlemler iptal edilebilir.",
                     HttpStatus.BAD_REQUEST,
@@ -347,7 +368,7 @@ public class ClanService {
         ClanMember requester = checkPermission(clan.getId(), requesterUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Üye atma yetkiniz yok.");
 
         if (requester.getRole() == ClanMemberRole.OWNER && memberToKick.getUserId().equals(requesterUserId)) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Kendinizi clan'dan atamazsınız. Ayrılma işlemini kullanın.",
                     HttpStatus.BAD_REQUEST,
@@ -355,7 +376,7 @@ public class ClanService {
             );
         }
         if (requester.getRole() == ClanMemberRole.MANAGER && memberToKick.getRole() != ClanMemberRole.MEMBER) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.AUTH_001,
                     "Sadece normal üyeleri atabilirsiniz.",
                     HttpStatus.FORBIDDEN,
@@ -380,7 +401,7 @@ public class ClanService {
         checkPermission(memberToUpdate.getClan().getId(), requesterUserId, List.of(ClanMemberRole.OWNER), "Sadece clan sahibi rol değiştirebilir.");
 
         if (memberToUpdate.getRole() == ClanMemberRole.OWNER) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Clan sahibinin rolü değiştirilemez. Yetki devri yapın.",
                     HttpStatus.BAD_REQUEST,
@@ -388,7 +409,7 @@ public class ClanService {
             );
         }
         if (request.getNewRole() == ClanMemberRole.OWNER) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Yeni bir sahip atanamaz. Yetki devri yapın.",
                     HttpStatus.BAD_REQUEST,
@@ -447,7 +468,7 @@ public class ClanService {
     public List<ClanMember> getUserClans(Long userId) {
         return clanMemberRepository.findByUserIdAndIsActiveTrue(userId);
     }
-    
+
     public List<ClanInvitation> getPendingInvitationsForClan(Long clanId) {
         Long requesterUserId = getCurrentUserId();
         checkPermission(clanId, requesterUserId, List.of(ClanMemberRole.OWNER, ClanMemberRole.MANAGER), "Yetkiniz yok.");
@@ -476,7 +497,7 @@ public class ClanService {
                         "Clan ID: " + clanId + ", User ID: " + userId
                 ));
         if (!requiredRoles.contains(member.getRole())) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.AUTH_001,
                     errorMessage,
                     HttpStatus.FORBIDDEN,
@@ -489,7 +510,7 @@ public class ClanService {
     private void addMemberToClan(Clan clan, Long userId, ClanMemberRole role) {
         // GÜNCELLEME: Sadece üyenin değil, klanın da aktifliğini kontrol et
         if (clanMemberRepository.existsActiveMemberInActiveClan(userId, clan.getCategory().getId())) {
-             throw new BaseException(
+            throw new BaseException(
                     ErrorCode.VAL_001,
                     "Kullanıcı zaten bu kategoride aktif bir clan üyesi.",
                     HttpStatus.BAD_REQUEST,
@@ -503,5 +524,28 @@ public class ClanService {
         newMember.setRole(role);
         newMember.setIsActive(true);
         clanMemberRepository.save(newMember);
+    }
+
+    @Transactional
+    public void donateToClan(Long clanId, Double amount) {
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findById(currentUserId).orElseThrow(() -> new BaseException(ErrorCode.SYS_001, "Kullanıcı bulunamadı", HttpStatus.NOT_FOUND, ""));
+
+        // Kullanıcının klan üyesi olup olmadığını kontrol et
+        clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(clanId, currentUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu klanın üyesi değilsiniz.", HttpStatus.FORBIDDEN, ""));
+
+        // Kullanıcının cüzdanından parayı çek
+        walletService.spendMeydanCoin(currentUserId, BigDecimal.valueOf(amount), "Klan bağışı: " + clanId);
+
+        // Klanın kasasına parayı ekle (PESSIMISTIC_WRITE ile)
+        Clan clan = clanRepository.findByIdForUpdate(clanId)
+                .orElseThrow(() -> new BaseException(ErrorCode.SYS_001, "Klan bulunamadı", HttpStatus.NOT_FOUND, ""));
+        clan.setMeydanCoin(clan.getMeydanCoin() + amount);
+        clanRepository.save(clan);
+
+        // İşlemi logla
+        ClanWalletTransaction transaction = new ClanWalletTransaction(clan, currentUser, amount, "DEPOSIT", "Kullanıcı bağışı");
+        clanWalletTransactionRepository.save(transaction);
     }
 }

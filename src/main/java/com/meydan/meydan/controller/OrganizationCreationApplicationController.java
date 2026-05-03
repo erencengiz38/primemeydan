@@ -26,28 +26,24 @@ public class OrganizationCreationApplicationController {
         return Long.parseLong(authentication.getName());
     }
 
-    // Normal kullanıcının organizasyon başvurusu yapması
-    @PostMapping("/apply")
-    public ResponseEntity<String> applyForOrganization(@RequestBody OrganizationApplyRequest request) {
+    @PostMapping(value = "/apply", consumes = {"multipart/form-data"})
+    public ResponseEntity<String> applyForOrganization(@ModelAttribute OrganizationApplyRequest request) {
         Long userId = getCurrentUserId();
         String result = applicationService.applyForOrganization(userId, request);
         return ResponseEntity.ok(result);
     }
-    
-    // Kullanıcının kendi başvurularını görmesi
+
     @GetMapping("/my-applications")
     public ResponseEntity<List<OrganizationCreationApplication>> getMyApplications() {
         Long userId = getCurrentUserId();
         return ResponseEntity.ok(applicationService.getMyApplications(userId));
     }
 
-    // Adminin bekleyen başvuruları görmesi
     @GetMapping("/admin/pending")
     public ResponseEntity<List<OrganizationCreationApplication>> getPendingApplications() {
         return ResponseEntity.ok(applicationService.getPendingApplications());
     }
 
-    // Adminin başvuruyu onaylaması
     @PostMapping("/admin/{applicationId}/approve")
     public ResponseEntity<String> approveApplication(
             @PathVariable Long applicationId,
@@ -56,7 +52,6 @@ public class OrganizationCreationApplicationController {
         return ResponseEntity.ok(result);
     }
 
-    // Adminin başvuruyu reddetmesi
     @PostMapping("/admin/{applicationId}/reject")
     public ResponseEntity<String> rejectApplication(
             @PathVariable Long applicationId,

@@ -15,4 +15,6 @@ public class ClanMemberResponseDTO {
     private String role;
     private LocalDateTime joinedAt;
     private Boolean isActive;
+
+    private String logo;
 }

@@ -5,6 +5,7 @@ import com.meydan.meydan.dto.response.TournamentApplicationResponseDTO;
 import com.meydan.meydan.dto.response.TurnuvaResponseDTO;
 import com.meydan.meydan.models.entities.TournamentApplication;
 import com.meydan.meydan.models.entities.Turnuva;
+import com.meydan.meydan.repository.OrganizationRepository;
 import com.meydan.meydan.request.AdminReviewRequest;
 import com.meydan.meydan.request.Turnuva.AddTurnuvaRequestBody;
 import com.meydan.meydan.request.Turnuva.ApplyToTournamentRequestBody;
@@ -39,43 +40,49 @@ import java.util.stream.Collectors;
 public class TurnuvaController {
 
     private final TurnuvaService turnuvaService;
-    private final ModelMapper modelMapper; // DTO dönüşümleri için eklendi
+    private final ModelMapper modelMapper;
+    private final OrganizationRepository organizationRepository;
 
     private Long getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return Long.parseLong(authentication.getName());
     }
 
-    // --- Helper Methods for DTO Mapping ---
     private TurnuvaResponseDTO mapToTurnuvaDTO(Turnuva turnuva) {
         TurnuvaResponseDTO dto = modelMapper.map(turnuva, TurnuvaResponseDTO.class);
+
         if (turnuva.getCategory() != null) {
             dto.setCategoryId(turnuva.getCategory().getId());
             dto.setCategoryName(turnuva.getCategory().getName());
         }
-        
-        // Null koruması: Eski kayıtlarda giriş ücreti null ise 0.0 olarak çevir
+
+        if (turnuva.getOrganizationId() != null) {
+            organizationRepository.findById(turnuva.getOrganizationId())
+                    .ifPresent(org -> dto.setOrganizationLogoUrl(org.getLogoUrl()));
+        }
+
         if (dto.getEntryFee() == null) {
             dto.setEntryFee(0.0);
         }
-        
+
         return dto;
     }
 
     private TournamentApplicationResponseDTO mapToApplicationDTO(TournamentApplication app) {
         TournamentApplicationResponseDTO dto = modelMapper.map(app, TournamentApplicationResponseDTO.class);
+
         if (app.getTournament() != null) {
             dto.setTournamentId(app.getTournament().getId());
             dto.setTournamentTitle(app.getTournament().getTitle());
         }
+
         if (app.getClan() != null) {
             dto.setClanId(app.getClan().getId());
             dto.setClanName(app.getClan().getName());
         }
+
         return dto;
     }
-
-    // --- 1. TEMEL CRUD İŞLEMLERİ ---
 
     @PostMapping("/{organizationId}/create")
     @Operation(summary = "Yeni turnuva oluştur", description = "Oluşturulan turnuva otomatik olarak ONAYLANIR (APPROVED) ve yayına alınır.")
@@ -128,10 +135,8 @@ public class TurnuvaController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva kalıcı olarak silindi", mapToTurnuvaDTO(deletedTurnuva)));
     }
 
-    // --- 2. LİSTELEME İŞLEMLERİ ---
-
     @GetMapping("/list")
-    @Operation(summary = "Tüm ONAYLANMIŞ turnuvaları listele (Herkese Açık)")
+    @Operation(summary = "Tüm ONAYLANMIŞ turnuvaları listeler")
     public ResponseEntity<ApiResponse<List<TurnuvaResponseDTO>>> getAllTurnuvas() {
         List<TurnuvaResponseDTO> dtoList = turnuvaService.getAllTurnuvas().stream()
                 .map(this::mapToTurnuvaDTO).collect(Collectors.toList());
@@ -139,7 +144,7 @@ public class TurnuvaController {
     }
 
     @GetMapping("/list/paginated")
-    @Operation(summary = "ONAYLANMIŞ turnuvaları sayfalı listele (Herkese Açık)")
+    @Operation(summary = "ONAYLANMIŞ turnuvaları sayfalı listeler")
     public ResponseEntity<ApiResponse<Page<TurnuvaResponseDTO>>> getAllTurnuvasWithPagination(Pageable pageable) {
         Page<TurnuvaResponseDTO> dtoPage = turnuvaService.getAllTurnuvasWithPagination(pageable)
                 .map(this::mapToTurnuvaDTO);
@@ -187,8 +192,6 @@ public class TurnuvaController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Kendi turnuvalarınız getirildi", dtoPage));
     }
 
-    // --- ADMİN ONAY İŞLEMLERİ ---
-
     @GetMapping("/admin/pending")
     @Operation(summary = "Onay bekleyen turnuvaları listele (Sadece Admin)")
     @PreAuthorize("hasRole('ADMIN')")
@@ -220,8 +223,6 @@ public class TurnuvaController {
         Turnuva turnuva = turnuvaService.rejectTurnuva(turnuvaId, request.getAdminNotes());
         return ResponseEntity.ok(new ApiResponse<>(true, "Turnuva reddedildi", mapToTurnuvaDTO(turnuva)));
     }
-
-    // --- 3. BAŞVURU VE YÖNETİM İŞLEMLERİ ---
 
     @PostMapping("/apply")
     @Operation(summary = "Turnuvaya başvur")
@@ -268,8 +269,6 @@ public class TurnuvaController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Başvurularınız getirildi", dtoList));
     }
 
-    // --- 4. MEYDANAGEL ÖZEL GÜÇLERİ ---
-
     @PutMapping("/{tournamentId}/deadline")
     @Operation(summary = "Kayıt Süresini Güncelle")
     public ResponseEntity<ApiResponse<TurnuvaResponseDTO>> updateTournamentDeadline(
@@ -309,8 +308,6 @@ public class TurnuvaController {
         TournamentApplication application = turnuvaService.performCheckIn(tournamentId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Check-in başarılı", mapToApplicationDTO(application)));
     }
-
-    // --- 5. FİNANS VE ÖDÜL ---
 
     @PostMapping("/{tournamentId}/finish")
     @Operation(summary = "Turnuvayı Bitir ve Ödülleri Dağıt", description = "Sadece organizatör yapabilir. Ödül havuzundaki MEYDAN_COIN'ler, kazanan takımların oyuncularına eşit paylaştırılır.")

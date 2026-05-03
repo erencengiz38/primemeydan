@@ -6,11 +6,13 @@ import com.meydan.meydan.dto.response.ClanInvitationResponseDTO;
 import com.meydan.meydan.dto.response.ClanMemberResponseDTO;
 import com.meydan.meydan.dto.response.ClanResponseDTO;
 import com.meydan.meydan.models.entities.*;
+import com.meydan.meydan.repository.MediaAssetRepository;
 import com.meydan.meydan.repository.UserRepository;
 import com.meydan.meydan.request.Clan.AddClanRequestBody;
 import com.meydan.meydan.request.Clan.InviteToClanRequest;
 import com.meydan.meydan.request.Clan.RespondToInvitationRequest;
 import com.meydan.meydan.request.Clan.UpdateClanMemberRoleRequestBody;
+import com.meydan.meydan.request.Clan.UpdateClanRequestBody;
 import com.meydan.meydan.service.ClanService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -34,35 +37,76 @@ import java.util.stream.Collectors;
 public class ClanController {
 
     private final ClanService clanService;
-    private final UserRepository userRepository; // Kullanıcı detayları için eklendi
+    private final UserRepository userRepository;
+    private final MediaAssetRepository mediaAssetRepository;
     private final ModelMapper modelMapper;
 
     // --- Helper Methods for DTO Mapping ---
+
+    /**
+     * Clan detaylarını ve logoyu haritalar.
+     */
     private ClanResponseDTO mapToClanDTO(Clan clan) {
         ClanResponseDTO dto = modelMapper.map(clan, ClanResponseDTO.class);
         if (clan.getCategory() != null) {
             dto.setCategoryName(clan.getCategory().getName());
         }
+
+        // Dinamik Logo Çekimi
+        dto.setLogo(getLatestClanLogo(clan.getId(), clan.getLogo()));
+
         return dto;
     }
 
+    /**
+     * Klan üyesi bilgilerini, klan ismini ve klan logosunu haritalar.
+     */
     private ClanMemberResponseDTO mapToClanMemberDTO(ClanMember member) {
         ClanMemberResponseDTO dto = modelMapper.map(member, ClanMemberResponseDTO.class);
+
         if (member.getClan() != null) {
-            dto.setClanName(member.getClan().getName());
+            Clan clan = member.getClan();
+            dto.setClanName(clan.getName());
+
+            // --- Logo Çekme Mantığı ---
+            List<MediaAsset> logos = mediaAssetRepository.findByAssetTypeAndRelatedId("CLAN_LOGO", String.valueOf(clan.getId()));
+            String latestLogo;
+
+            if (logos != null && !logos.isEmpty()) {
+                latestLogo = logos.stream()
+                        .max(Comparator.comparing(MediaAsset::getCreatedAt))
+                        .map(MediaAsset::getImageUrl)
+                        .orElse(clan.getLogo());
+            } else {
+                latestLogo = clan.getLogo();
+            }
+
+            dto.setLogo(latestLogo != null ? latestLogo : ""); // DTO'da logo alanı olmalı
         }
-        
-        // Üyenin bilgilerini UserRepository'den çekip DTO'ya ekle
+
+        // Üyenin kullanıcı bilgilerini çekme (Display Name ve Tag)
         if (member.getUserId() != null) {
-            Optional<User> userOpt = userRepository.findById(member.getUserId());
-            if (userOpt.isPresent()) {
-                User user = userOpt.get();
+            userRepository.findById(member.getUserId()).ifPresent(user -> {
                 dto.setUserName(user.getDisplay_name());
                 dto.setUserTag(user.getTag());
-            }
+            });
         }
 
         return dto;
+    }
+
+    /**
+     * Ortak logo çekme mantığı
+     */
+    private String getLatestClanLogo(Long clanId, String fallbackLogo) {
+        List<MediaAsset> logos = mediaAssetRepository.findByAssetTypeAndRelatedId("CLAN_LOGO", String.valueOf(clanId));
+        if (logos != null && !logos.isEmpty()) {
+            return logos.stream()
+                    .max(Comparator.comparing(MediaAsset::getCreatedAt))
+                    .map(MediaAsset::getImageUrl)
+                    .orElse(fallbackLogo);
+        }
+        return fallbackLogo;
     }
 
     private ClanInvitationResponseDTO mapToClanInvitationDTO(ClanInvitation invitation) {
@@ -71,19 +115,17 @@ public class ClanController {
             dto.setClanName(invitation.getClan().getName());
         }
 
-        // Başvuranın / Davet edilenin bilgilerini UserRepository'den çekip DTO'ya ekle
         if (invitation.getUserId() != null) {
-            Optional<User> userOpt = userRepository.findById(invitation.getUserId());
-            if (userOpt.isPresent()) {
-                User user = userOpt.get();
+            userRepository.findById(invitation.getUserId()).ifPresent(user -> {
                 dto.setUserName(user.getDisplay_name());
                 dto.setUserTag(user.getTag());
-            }
+            });
         }
         return dto;
     }
 
     // --- Clan Read Endpoints ---
+
     @GetMapping("/list")
     @Operation(summary = "Tüm aktif clanları listele")
     public ResponseEntity<ApiResponse<List<ClanResponseDTO>>> getAllClans() {
@@ -99,7 +141,7 @@ public class ClanController {
                 .map(this::mapToClanDTO);
         return ResponseEntity.ok(new ApiResponse<>(true, "Clanlar başarıyla getirildi", dtoPage));
     }
-    
+
     @GetMapping("/{clanId}")
     @Operation(summary = "ID ile clan detaylarını getir")
     public ResponseEntity<ApiResponse<ClanResponseDTO>> getClanById(@PathVariable Long clanId) {
@@ -107,13 +149,23 @@ public class ClanController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Clan detayları getirildi", mapToClanDTO(clan)));
     }
 
-    // --- Clan Create Endpoint ---
+    // --- Clan Create and Update Endpoints ---
+
     @PostMapping("/create")
     @Operation(summary = "Yeni clan oluştur")
     public ResponseEntity<ApiResponse<ClanResponseDTO>> createClan(@Valid @RequestBody AddClanRequestBody request) {
         Clan clan = clanService.createClan(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(true, "Clan başarıyla oluşturuldu", mapToClanDTO(clan)));
+    }
+
+    @PutMapping("/{clanId}/update")
+    @Operation(summary = "Clan bilgilerini güncelle (Owner/Manager)")
+    public ResponseEntity<ApiResponse<ClanResponseDTO>> updateClan(
+            @PathVariable Long clanId,
+            @Valid @RequestBody UpdateClanRequestBody request) {
+        Clan clan = clanService.updateClan(clanId, request);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Clan bilgileri başarıyla güncellendi", mapToClanDTO(clan)));
     }
 
     // --- Invitation and Application Endpoints ---
@@ -156,7 +208,7 @@ public class ClanController {
         ClanInvitation invitation = clanService.cancelInvitation(invitationId);
         return ResponseEntity.ok(new ApiResponse<>(true, "İşlem başarıyla iptal edildi.", mapToClanInvitationDTO(invitation)));
     }
-    
+
     @GetMapping("/invitations/pending/my")
     @Operation(summary = "Sana gelen bekleyen davetleri listele")
     public ResponseEntity<ApiResponse<List<ClanInvitationResponseDTO>>> getMyPendingInvitations(@CurrentUserId Long userId) {
@@ -204,9 +256,9 @@ public class ClanController {
         ClanMember member = clanService.updateMemberRole(request);
         return ResponseEntity.ok(new ApiResponse<>(true, "Üye rolü başarıyla güncellendi", mapToClanMemberDTO(member)));
     }
-    
+
     @DeleteMapping("/{clanId}/leave")
-    @Operation(summary = "Klandan Ayrıl", description = "Sahipsiz klan koruması ile klandan ayrılma")
+    @Operation(summary = "Klandan Ayrıl")
     public ResponseEntity<ApiResponse<Void>> leaveClan(@PathVariable Long clanId) {
         clanService.leaveClan(clanId);
         return ResponseEntity.ok(new ApiResponse<>(true, "Klandan başarıyla ayrıldınız.", null));
@@ -218,5 +270,14 @@ public class ClanController {
         List<ClanMemberResponseDTO> dtoList = clanService.getUserClans(userId).stream()
                 .map(this::mapToClanMemberDTO).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Kendi clanlarınız başarıyla getirildi", dtoList));
+    }
+
+    @PostMapping("/{clanId}/donate")
+    @Operation(summary = "Klana Bağış Yap (Meydan Coin)")
+    public ResponseEntity<ApiResponse<String>> donateToClan(
+            @PathVariable Long clanId,
+            @RequestParam Double amount) {
+        clanService.donateToClan(clanId, amount);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Klana başarıyla " + amount + " Meydan Coin bağış yapıldı.", null));
     }
 }

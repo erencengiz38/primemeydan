@@ -53,6 +53,13 @@ public class Clan {
     @JsonIgnoreProperties({"clan", "hibernateLazyInitializer", "handler"})
     private List<ClanMember> members;
 
+    // --- YENİ EKLENEN KASA ALANLARI ---
+    @Column(name = "real_balance", nullable = false)
+    private Double realBalance = 0.0;
+
+    @Column(name = "meydan_coin", nullable = false)
+    private Double meydanCoin = 0.0;
+
     @Version
     private Integer version;
 }

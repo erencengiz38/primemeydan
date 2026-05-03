@@ -29,4 +29,7 @@ public class OrganizationMembership {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrganizationRole role;
+
+    @Column(name = "can_create_tournament", nullable = false)
+    private Boolean canCreateTournament = true; // Varsayılan olarak turnuva oluşturma izni verilir
 }

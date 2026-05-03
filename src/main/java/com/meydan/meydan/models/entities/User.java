@@ -28,6 +28,9 @@ public class User {
     private String password;
     private String tag;
 
+    private String profile_picture_url;
+    private String banner_url;
+
     @Enumerated(EnumType.STRING)
     private Role role = Role.USER;
 

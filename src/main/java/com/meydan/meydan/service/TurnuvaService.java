@@ -42,6 +42,7 @@ public class TurnuvaService {
     private final OrganizationMembershipRepository organizationMembershipRepository;
     private final OrganizationQuotaRepository organizationQuotaRepository;
     private final TournamentStageRepository tournamentStageRepository;
+    private final ClanWalletTransactionRepository clanWalletTransactionRepository; // EKELNDİ
     private final WalletService walletService;
     private final XssSanitizer xssSanitizer;
 
@@ -334,7 +335,8 @@ public class TurnuvaService {
             throw new BaseException(ErrorCode.APP_002, "Tüm başvurular bir Takım (Klan) üzerinden yapılmalıdır. Clan ID zorunludur.", HttpStatus.BAD_REQUEST, "");
         }
 
-        Clan clan = clanRepository.findById(request.getClanId())
+        // Klan Kasa Kontrolü ve Kesintisi İçin Gerekli Olan Kilit
+        Clan clan = clanRepository.findByIdForUpdate(request.getClanId())
                 .orElseThrow(() -> new BaseException(ErrorCode.VAL_001, "Klan bulunamadı", HttpStatus.NOT_FOUND, ""));
 
         if (!clan.getCategory().getId().equals(tournament.getCategory().getId())) {
@@ -344,12 +346,31 @@ public class TurnuvaService {
         ClanMember member = clanMemberRepository.findByClanIdAndUserIdAndIsActiveTrue(request.getClanId(), applicantUserId)
                 .orElseThrow(() -> new BaseException(ErrorCode.AUTH_001, "Bu klanın aktif bir üyesi değilsiniz.", HttpStatus.FORBIDDEN, ""));
 
-        if (member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN) {
-            throw new BaseException(ErrorCode.APP_004, "Sadece klan kurucusu veya takım kaptanı turnuvaya başvuru yapabilir.", HttpStatus.FORBIDDEN, "");
+        if (member.getRole() != ClanMemberRole.OWNER && member.getRole() != ClanMemberRole.TEAM_CAPTAIN && member.getRole() != ClanMemberRole.MANAGER) {
+            throw new BaseException(ErrorCode.APP_004, "Sadece klan kurucusu, yöneticisi veya takım kaptanı turnuvaya başvuru yapabilir.", HttpStatus.FORBIDDEN, "");
         }
 
+        // --- GİRİŞ ÜCRETİ KONTROLÜ VE KESİNTİSİ (YENİ) ---
+        if (tournament.getEntryFee() != null && tournament.getEntryFee() > 0) {
+            if (clan.getMeydanCoin() < tournament.getEntryFee()) {
+                throw new BaseException(ErrorCode.VAL_001, "Klan kasasında yeterli Meydan Coin bulunmuyor. Gereken: " + tournament.getEntryFee() + ", Mevcut: " + clan.getMeydanCoin(), HttpStatus.BAD_REQUEST, "");
+            }
+
+            // Bakiyeyi düş
+            clan.setMeydanCoin(clan.getMeydanCoin() - tournament.getEntryFee());
+            clanRepository.save(clan);
+
+            // İşlemi Logla
+            User applicant = new User();
+            applicant.setId(applicantUserId);
+
+            ClanWalletTransaction transaction = new ClanWalletTransaction(clan, applicant, tournament.getEntryFee(), "WITHDRAWAL", "Turnuva Giriş Ücreti - Turnuva ID: " + tournament.getId());
+            clanWalletTransactionRepository.save(transaction);
+        }
+        // --- GİRİŞ ÜCRETİ BİTİŞ ---
+
         if (request.getSelectedClanMemberIds() == null || request.getSelectedClanMemberIds().isEmpty()) {
-            throw new BaseException(ErrorCode.VAL_001, "Turnuvaya katılacak asil kadro oyuncularını seçmelisiniz.", HttpStatus.BAD_REQUEST, "");
+            throw new BaseException(ErrorCode.VAL_001, "Turnuvaya katılacak asil kadro oyuncuları seçmelisiniz.", HttpStatus.BAD_REQUEST, "");
         }
 
         int rosterSize = request.getSelectedClanMemberIds().size();
